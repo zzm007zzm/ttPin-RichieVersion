@@ -1,0 +1,837 @@
+/*
+  ttPin UI theme
+  - Modern minimalist
+  - Morandi-inspired muted palette
+*/
+
+:root {
+  --bg: #f7f5f2;
+  --surface: rgba(255, 255, 255, 0.96);
+  --surface-2: rgba(246, 244, 241, 0.98);
+  --text: #2c2b29;
+  --text-2: #6b6762;
+  --border: #ded7cf;
+  --shadow: 0 10px 30px rgba(35, 33, 30, 0.08);
+  --accent: #6f8fa6; /* muted blue */
+  --accent-2: #8fa7a0; /* muted green */
+  --danger: #b64b4b;
+  --radius: 14px;
+  --radius-sm: 10px;
+  --focus: 0 0 0 3px rgba(111, 143, 166, 0.25);
+
+  /* Fluid sizing: small by default, scales with window size */
+  --fs-title: clamp(14px, 1.1vw + 9px, 16px);
+  --fs-sub: clamp(11px, 0.6vw + 8px, 12px);
+  --fs-select: clamp(12px, 0.9vw + 7px, 13px);
+  --fs-textarea: clamp(13px, 1.2vw + 9px, 18px);
+  --fs-output: clamp(14px, 1.4vw + 10px, 20px);
+  --fs-meta: clamp(11px, 0.7vw + 7px, 12px);
+
+  --pad-app: clamp(10px, 1.6vw, 14px);
+  --gap: clamp(10px, 1.6vw, 12px);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  color: var(--text);
+  background: transparent;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell,
+    'Helvetica Neue', sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+button,
+select,
+textarea {
+  font-family: inherit;
+}
+
+button {
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  transition: background 120ms ease, border-color 120ms ease, transform 120ms ease;
+}
+
+button:hover {
+  background: rgba(143, 167, 160, 0.08);
+}
+
+button:active {
+  transform: translateY(1px);
+}
+
+button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  transform: none;
+}
+
+button:focus-visible {
+  outline: none;
+  box-shadow: var(--focus);
+}
+
+select {
+  appearance: none;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  border-radius: var(--radius-sm);
+  padding: clamp(10px, 1.4vw, 12px) clamp(34px, 4vw, 40px) clamp(10px, 1.4vw, 12px)
+    clamp(12px, 1.4vw, 14px);
+  line-height: 1.2;
+  font-size: var(--fs-select);
+}
+
+select:focus-visible {
+  outline: none;
+  box-shadow: var(--focus);
+}
+
+textarea {
+  border: 0;
+  outline: none;
+  resize: none;
+  background: transparent;
+  color: var(--text);
+  font-size: var(--fs-textarea);
+  line-height: 1.45;
+  width: 100%;
+  height: 100%;
+}
+
+textarea::placeholder {
+  color: rgba(107, 103, 98, 0.7);
+  font-size: var(--fs-textarea);
+}
+
+/* App layout */
+.ttPinApp {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: linear-gradient(135deg, rgba(249, 247, 244, 0.98) 0%, rgba(245, 243, 240, 0.98) 100%);
+  backdrop-filter: blur(12px) saturate(150%);
+  -webkit-backdrop-filter: blur(12px) saturate(150%);
+  box-shadow: 
+    0 8px 32px rgba(31, 38, 135, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.6);
+  overflow: hidden;
+}
+
+/* Custom title bar */
+.ttPinTitleBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 32px;
+  padding: 0 8px 0 16px;
+  background: rgba(255, 255, 255, 0.3);
+  border-bottom: 1px solid rgba(222, 215, 207, 0.3);
+  flex-shrink: 0;
+  -webkit-app-region: drag;
+  user-select: none;
+}
+
+.ttPinTitleBarLeft {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+}
+
+.ttPinTitleBarTitle {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-2);
+  letter-spacing: 0.3px;
+}
+
+.ttPinTitleBarControls {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  -webkit-app-region: no-drag;
+}
+
+.ttPinTitleBarButton {
+  width: 46px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  background: transparent;
+  border: none;
+  color: var(--text-2);
+  font-size: 16px;
+  cursor: pointer;
+  transition: background 120ms ease;
+  padding: 0;
+  border-radius: 0;
+  -webkit-app-region: no-drag;
+}
+
+.ttPinTitleBarButton > span {
+  display: block;
+  width: 18px;
+  height: 18px;
+  line-height: 18px;
+  text-align: center;
+  font-family: 'Segoe UI Symbol', 'Segoe UI', system-ui, sans-serif;
+  font-size: 16px;
+  user-select: none;
+  -webkit-app-region: no-drag;
+  position: relative;
+}
+
+.ttPinTitleBarIcon {
+  position: relative;
+}
+
+.ttPinTitleBarIcon--min::after {
+  content: '';
+  position: absolute;
+  left: 6px;
+  right: 6px;
+  height: 1px;
+  top: calc(50% + 2%);
+  transform: translateY(-50%);
+  background: currentColor;
+  border-radius: 999px;
+  opacity: 0.95;
+  pointer-events: none;
+}
+
+.ttPinTitleBarIcon--close::before,
+.ttPinTitleBarIcon--close::after {
+  content: '';
+  position: absolute;
+  width: 8px;
+  height: 1px;
+  left: 50%;
+  top: calc(50% + 2% + 0.3px);
+  background: currentColor;
+  border-radius: 999px;
+  transform-origin: center;
+  pointer-events: none;
+  opacity: 0.95;
+}
+
+.ttPinTitleBarIcon--close::before {
+  transform: translate(-50%, -50%) rotate(45deg);
+}
+
+.ttPinTitleBarIcon--close::after {
+  transform: translate(-50%, -50%) rotate(-45deg);
+}
+
+.ttPinTitleBarIcon--restore svg {
+  display: block;
+  width: 18px;
+  height: 18px;
+}
+
+.ttPinTitleBarButton:hover {
+  background: rgba(0, 0, 0, 0.05);
+}
+
+.ttPinTitleBarButton:active {
+  background: rgba(0, 0, 0, 0.1);
+  transform: none;
+}
+
+.ttPinTitleBarButton--close:hover {
+  background: #e81123;
+  color: white;
+}
+
+.ttPinTitleBarButton--close:active {
+  background: #c50f1f;
+}
+
+/* Adjust main content padding */
+.ttPinApp > :not(.ttPinTitleBar) {
+  padding-left: var(--pad-app);
+  padding-right: var(--pad-app);
+}
+
+.ttPinApp > .ttPinHeader {
+  padding-top: var(--pad-app);
+}
+
+.ttPinScroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+  padding: 0 var(--pad-app) var(--pad-app) var(--pad-app);
+}
+
+.ttPinHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--gap);
+  padding-bottom: var(--gap);
+}
+
+.ttPinHeaderActions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.ttPinBrandRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.ttPinLogo {
+  width: clamp(44px, 5.8vw, 56px);
+  height: clamp(44px, 5.8vw, 56px);
+  flex: 0 0 clamp(44px, 5.8vw, 56px);
+}
+
+.ttPinBrandTitle {
+  font-size: var(--fs-title);
+  font-weight: 700;
+  letter-spacing: 0.2px;
+}
+
+.ttPinBrandSub {
+  font-size: var(--fs-sub);
+  color: var(--text-2);
+  margin-top: 2px;
+}
+
+.ttPinLangToggle {
+  padding: clamp(8px, 1.2vw, 10px) clamp(10px, 1.2vw, 12px);
+  min-width: clamp(38px, 5vw, 44px);
+  border-radius: 12px;
+}
+
+.ttPinPinToggle {
+  padding: clamp(8px, 1.2vw, 10px) clamp(10px, 1.2vw, 12px);
+  min-width: clamp(38px, 5vw, 44px);
+  border-radius: 12px;
+}
+
+.ttPinLanguageBar {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  gap: clamp(8px, 1.2vw, 10px);
+  align-items: center;
+}
+
+.ttPinSelectWrap {
+  position: relative;
+}
+
+.ttPinSelectWrap::after {
+  content: '▾';
+  position: absolute;
+  right: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-2);
+  pointer-events: none;
+  font-size: var(--fs-meta);
+}
+
+.ttPinSelect {
+  width: 100%;
+}
+
+.ttPinSwap {
+  width: clamp(38px, 6vw, 44px);
+  height: clamp(38px, 6vw, 44px);
+  border-radius: 14px;
+  display: grid;
+  place-items: center;
+  background: var(--surface);
+}
+
+.ttPinPanels {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--gap);
+  min-height: 0;
+}
+
+.ttPinPanel {
+  background: var(--surface);
+  border: 1px solid rgba(222, 215, 207, 0.6);
+  border-radius: var(--radius);
+  box-shadow: 
+    var(--shadow),
+    inset 0 1px 0 rgba(255, 255, 255, 0.5);
+  display: grid;
+  grid-template-rows: 1fr auto;
+  min-height: 0;
+}
+
+.ttPinIconBtn {
+  width: clamp(30px, 4.4vw, 34px);
+  height: clamp(30px, 4.4vw, 34px);
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  font-size: 18px;
+}
+
+.ttPinIconBtn--small {
+  width: clamp(28px, 4vw, 32px);
+  height: clamp(28px, 4vw, 32px);
+  font-size: 16px;
+  border-radius: 10px;
+}
+
+.ttPinTextarea {
+  padding: clamp(10px, 1.3vw, 12px) 12px 12px;
+}
+
+.ttPinOutput {
+  padding: clamp(10px, 1.3vw, 12px) 12px 12px;
+  overflow: auto;
+}
+
+.ttPinOutputText {
+  white-space: pre-wrap;
+  font-size: var(--fs-output);
+  line-height: 1.45;
+}
+
+.ttPinOutputPlaceholder {
+  color: rgba(107, 103, 98, 0.7);
+  font-size: var(--fs-textarea);
+  line-height: 1.45;
+  padding-top: 0;
+}
+
+.ttPinPanelFooter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px 12px;
+}
+
+.ttPinFooterLeft {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ttPinFooterRight {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.ttPinPanelFooter--right {
+  justify-content: flex-end;
+}
+
+.ttPinPrimaryBtn {
+  border: 1px solid rgba(111, 143, 166, 0.6);
+  background: rgba(111, 143, 166, 0.14);
+  color: rgba(28, 46, 60, 0.95);
+  padding: clamp(8px, 1.2vw, 10px) clamp(12px, 1.6vw, 14px);
+  font-weight: 650;
+  border-radius: 12px;
+}
+
+.ttPinPrimaryBtn:hover {
+  background: rgba(111, 143, 166, 0.18);
+}
+
+.ttPinHint {
+  font-size: var(--fs-meta);
+  color: var(--text-2);
+}
+
+.ttPinToast {
+  font-size: var(--fs-meta);
+  color: var(--text-2);
+  background: rgba(143, 167, 160, 0.16);
+  border: 1px solid rgba(143, 167, 160, 0.25);
+  padding: 6px 10px;
+  border-radius: 999px;
+}
+
+.ttPinError {
+  color: var(--danger);
+  font-size: var(--fs-meta);
+  padding: 8px 10px;
+  border: 1px solid rgba(182, 75, 75, 0.35);
+  background: rgba(182, 75, 75, 0.08);
+  border-radius: 12px;
+}
+
+/* Overlay for modals */
+.ttPinOverlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(4px);
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  z-index: 100;
+  animation: fadeIn 200ms ease;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* Settings panel */
+.ttPinSettings {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 20px 60px rgba(35, 33, 30, 0.2);
+  width: 100%;
+  max-width: 580px;
+  max-height: 90vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  animation: slideUp 250ms ease;
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.ttPinSettingsHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+.ttPinSettingsHeader h2 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.ttPinCloseButton {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  font-size: 20px;
+  color: var(--text-2);
+}
+
+.ttPinSettingsContent {
+  flex: 1;
+  overflow: auto;
+  padding: 20px;
+}
+
+.ttPinSettingsSection {
+  margin-bottom: 24px;
+}
+
+.ttPinSettingsSection h3 {
+  margin: 0 0 8px 0;
+  font-size: 15px;
+  font-weight: 650;
+  color: var(--text);
+}
+
+.ttPinSettingsDescription {
+  margin: 0 0 16px 0;
+  font-size: 13px;
+  color: var(--text-2);
+  line-height: 1.5;
+}
+
+.ttPinFormGroup {
+  margin-bottom: 16px;
+}
+
+.ttPinFormGroup label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.ttPinInput {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  border-radius: var(--radius-sm);
+  font-size: 14px;
+  transition: border-color 150ms ease, box-shadow 150ms ease;
+}
+
+.ttPinInput:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: var(--focus);
+}
+
+.ttPinInput::placeholder {
+  color: var(--text-2);
+  opacity: 0.6;
+}
+
+.ttPinHelpText {
+  display: block;
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--text-2);
+  line-height: 1.4;
+}
+
+.ttPinSettingsActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 24px;
+  padding-top: 20px;
+  border-top: 1px solid var(--border);
+}
+
+.ttPinButton {
+  padding: 10px 18px;
+  border-radius: 10px;
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.ttPinButtonPrimary {
+  border: 1px solid rgba(111, 143, 166, 0.6);
+  background: rgba(111, 143, 166, 0.14);
+  color: rgba(28, 46, 60, 0.95);
+}
+
+.ttPinButtonPrimary:hover:not(:disabled) {
+  background: rgba(111, 143, 166, 0.22);
+}
+
+.ttPinButtonSecondary {
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+}
+
+.ttPinButtonSecondary--small {
+  padding: 8px 12px;
+  font-size: 13px;
+  border-radius: 8px;
+}
+
+.ttPinErrorMessage {
+  padding: 10px 14px;
+  margin-bottom: 16px;
+  background: rgba(182, 75, 75, 0.08);
+  border: 1px solid rgba(182, 75, 75, 0.35);
+  border-radius: var(--radius-sm);
+  color: var(--danger);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.ttPinSuccessMessage {
+  padding: 10px 14px;
+  margin-bottom: 16px;
+  background: rgba(143, 167, 160, 0.12);
+  border: 1px solid rgba(143, 167, 160, 0.35);
+  border-radius: var(--radius-sm);
+  color: var(--accent-2);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+/* Vocabulary panel */
+.ttPinVocabulary {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 20px 60px rgba(35, 33, 30, 0.2);
+  width: 100%;
+  max-width: 700px;
+  max-height: 90vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  animation: slideUp 250ms ease;
+}
+
+.ttPinVocabularyHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+.ttPinVocabularyHeader h2 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.ttPinVocabularySearch {
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+.ttPinVocabularyCount {
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--text-2);
+}
+
+.ttPinVocabularyContent {
+  flex: 1;
+  overflow: auto;
+  padding: 12px;
+}
+
+.ttPinLoading {
+  text-align: center;
+  padding: 40px 20px;
+  color: var(--text-2);
+  font-size: 14px;
+}
+
+.ttPinEmptyState {
+  text-align: center;
+  padding: 60px 20px;
+  color: var(--text-2);
+  font-size: 14px;
+}
+
+.ttPinVocabularyList {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.ttPinVocabularyItem {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 14px 16px;
+  transition: box-shadow 150ms ease;
+}
+
+.ttPinVocabularyItem:hover {
+  box-shadow: 0 4px 12px rgba(35, 33, 30, 0.08);
+}
+
+.ttPinVocabularyItemHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.ttPinVocabularyWord {
+  font-size: 16px;
+  font-weight: 650;
+  color: var(--text);
+}
+
+.ttPinDeleteButton {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  font-size: 16px;
+  background: transparent;
+  border: 1px solid transparent;
+}
+
+.ttPinDeleteButton:hover {
+  background: rgba(182, 75, 75, 0.1);
+  border-color: rgba(182, 75, 75, 0.2);
+}
+
+.ttPinVocabularyTranslation {
+  font-size: 15px;
+  color: var(--text);
+  margin-bottom: 8px;
+  line-height: 1.5;
+}
+
+.ttPinVocabularyExample {
+  font-size: 13px;
+  color: var(--text-2);
+  font-style: italic;
+  margin-bottom: 10px;
+  line-height: 1.5;
+  padding: 8px 12px;
+  background: rgba(111, 143, 166, 0.06);
+  border-radius: 8px;
+}
+
+.ttPinVocabularyMeta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--text-2);
+}
+
+.ttPinVocabularyLang {
+  font-weight: 600;
+}
+
+.ttPinVocabularyDate {
+  opacity: 0.8;
+}
+

@@ -1,0 +1,32 @@
+# dependencies
+node_modules/
+
+# build outputs
+**/dist/
+**/build/
+**/target/
+.target/
+
+# env
+.env
+.env.*
+!.env.example
+
+# logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# editors
+.vscode/
+!.vscode/extensions.json
+
+# API test collections (may contain secrets)
+bruno-apis/
+
+# local requirement notes (do not upload)
+需求文档.md
