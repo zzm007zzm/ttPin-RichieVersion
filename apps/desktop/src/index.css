@@ -88,6 +88,18 @@ button:focus-visible {
   box-shadow: var(--focus);
 }
 
+@keyframes ttPinSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.ttPinSpinner {
+  display: block;
+  transform-origin: 50% 50%;
+  animation: ttPinSpin 0.8s linear infinite;
+}
+
 select {
   appearance: none;
   border: 1px solid var(--border);

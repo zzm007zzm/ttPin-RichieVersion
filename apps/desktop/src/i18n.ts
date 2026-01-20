@@ -21,9 +21,13 @@ const resources = {
       uiSourcePlaceholder: 'Type text to translate',
       uiTargetPlaceholder: 'Translation will appear here',
       uiTranslating: 'Translating…',
-      uiShortcutHint: 'Ctrl/⌘ + Enter to translate',
+      uiShortcutHint: 'Ctrl + Enter to translate',
       uiPin: 'Pin on top',
       uiUnpin: 'Unpin',
+
+      // TTS
+      'tts.speak': 'Text to Speech',
+      'tts.stop': 'Stop',
 
       // Common
       'common.close': 'Close',
@@ -78,7 +82,11 @@ const resources = {
       uiSourcePlaceholder: '输入要翻译的文字',
       uiTargetPlaceholder: '翻译结果会显示在这里',
       uiTranslating: '翻译中…',
-      uiShortcutHint: 'Ctrl/⌘ + Enter 翻译',
+      uiShortcutHint: 'Ctrl + Enter 翻译',
+
+      // TTS
+      'tts.speak': '朗读',
+      'tts.stop': '停止',
       uiPin: '置顶',
       uiUnpin: '取消置顶',
 

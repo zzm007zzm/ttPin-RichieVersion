@@ -11,9 +11,9 @@
 
 ## 界面预览
 
-![ttPin 主界面](docs/screenshots/main.png?v=feb744e)
+![ttPin 主界面](docs/screenshots/main.png?v=0.1.3)
 
-![ttPin 设置页](docs/screenshots/settings.png?v=feb744e)
+![ttPin 设置页](docs/screenshots/settings.png?v=0.1.3)
 
 ## 功能特性
 

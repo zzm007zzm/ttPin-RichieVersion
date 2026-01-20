@@ -5,6 +5,11 @@ use tauri::{
 };
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 
+use std::collections::HashMap;
+use std::sync::{Mutex, OnceLock};
+
+use base64::Engine;
+
 #[derive(serde::Deserialize, serde::Serialize)]
 struct TranslatorTarget {
   language: String,
@@ -188,6 +193,214 @@ fn set_always_on_top(window: tauri::WebviewWindow, enabled: bool) -> Result<(), 
     .map_err(|e| format!("Failed to set always-on-top: {e}"))
 }
 
+#[derive(serde::Deserialize)]
+struct TtsSynthesizeArgs {
+  region: String,
+  key: String,
+  /// Preferred language/locale (e.g. "zh-CN", "en-US", "en").
+  lang: String,
+  text: String,
+}
+
+#[derive(serde::Serialize)]
+struct TtsSynthesizeResult {
+  audio_base64: String,
+  locale: String,
+  voice: String,
+}
+
+#[derive(Clone, serde::Deserialize)]
+struct TtsVoice {
+  #[serde(rename = "ShortName")]
+  short_name: String,
+  #[serde(rename = "Locale")]
+  locale: String,
+}
+
+static VOICES_CACHE: OnceLock<Mutex<HashMap<String, Vec<TtsVoice>>>> = OnceLock::new();
+
+fn xml_escape_text(input: &str) -> String {
+  // Minimal XML escaping for text nodes.
+  input
+    .replace('&', "&amp;")
+    .replace('<', "&lt;")
+    .replace('>', "&gt;")
+}
+
+fn xml_escape_attr(input: &str) -> String {
+  // Minimal XML escaping for attribute values.
+  input
+    .replace('&', "&amp;")
+    .replace('"', "&quot;")
+    .replace('<', "&lt;")
+    .replace('>', "&gt;")
+}
+
+fn normalize_region(input: &str) -> String {
+  input.trim().to_lowercase()
+}
+
+fn normalize_lang_or_locale(input: &str) -> (String, String) {
+  // Returns (preferred_locale, preferred_lang_prefix)
+  let raw = input.trim();
+  if raw.is_empty() {
+    return ("en-US".to_string(), "en".to_string());
+  }
+
+  // If it's already like en-US or zh-CN, keep as locale.
+  if raw.contains('-') && raw.len() >= 4 {
+    let parts: Vec<&str> = raw.split('-').collect();
+    let lang = parts[0].to_lowercase();
+    // Preserve original casing for locale-ish strings.
+    return (raw.to_string(), lang);
+  }
+
+  let lang = raw.to_lowercase();
+  (lang.clone(), lang)
+}
+
+async fn fetch_tts_voices(region: &str, key: &str) -> Result<Vec<TtsVoice>, String> {
+  let region = normalize_region(region);
+  let url = format!(
+    "https://{region}.tts.speech.microsoft.com/cognitiveservices/voices/list"
+  );
+
+  let client = reqwest::Client::new();
+  let resp = client
+    .get(url)
+    .header("ocp-apim-subscription-key", key)
+    .send()
+    .await
+    .map_err(|e| format!("TTS voices request failed: {e}"))?;
+
+  let status = resp.status();
+  let text = resp
+    .text()
+    .await
+    .map_err(|e| format!("TTS voices read response failed: {e}"))?;
+
+  if !status.is_success() {
+    return Err(format!("TTS voices request failed: {status}. {text}"));
+  }
+
+  let voices: Vec<TtsVoice> = serde_json::from_str(&text).map_err(|e| format!("Invalid voices JSON: {e}"))?;
+  Ok(voices)
+}
+
+fn pick_default_voice<'a>(voices: &'a [TtsVoice], preferred: &str) -> Option<&'a TtsVoice> {
+  let (preferred_locale, preferred_lang) = normalize_lang_or_locale(preferred);
+  let preferred_locale_lc = preferred_locale.to_lowercase();
+  let preferred_lang_lc = preferred_lang.to_lowercase();
+
+  // Per requirement: pick the first voice for that language from the API response.
+  // 1) Exact locale match
+  if let Some(v) = voices.iter().find(|v| v.locale.to_lowercase() == preferred_locale_lc) {
+    return Some(v);
+  }
+
+  // 2) Locale starts with language prefix (e.g., en-*)
+  let prefix = format!("{}-", preferred_lang_lc);
+  if let Some(v) = voices.iter().find(|v| v.locale.to_lowercase().starts_with(&prefix)) {
+    return Some(v);
+  }
+
+  // 3) Fallback: first available
+  voices.first()
+}
+
+#[tauri::command]
+async fn tts_synthesize(args: TtsSynthesizeArgs) -> Result<TtsSynthesizeResult, String> {
+  let key = args.key.trim();
+  let region = args.region.trim();
+  let text = args.text.trim();
+  if key.is_empty() {
+    return Err("Missing subscription key".to_string());
+  }
+  if region.is_empty() {
+    return Err("Missing region".to_string());
+  }
+  if text.is_empty() {
+    return Err("Text is empty".to_string());
+  }
+
+  let region_norm = normalize_region(region);
+
+  // Get voices from cache or fetch.
+  let cache = VOICES_CACHE.get_or_init(|| Mutex::new(HashMap::new()));
+  let cached = {
+    let guard = cache.lock().map_err(|_| "Voices cache poisoned".to_string())?;
+    guard.get(&region_norm).cloned()
+  };
+
+  let voices = if let Some(v) = cached {
+    v
+  } else {
+    let v = fetch_tts_voices(&region_norm, key).await?;
+    let mut guard = cache.lock().map_err(|_| "Voices cache poisoned".to_string())?;
+    guard.insert(region_norm.clone(), v.clone());
+    v
+  };
+
+  let voice = pick_default_voice(&voices, &args.lang).ok_or_else(|| "No available TTS voices".to_string())?;
+  let chosen_locale = voice.locale.clone();
+  let chosen_voice = voice.short_name.clone();
+
+  // Azure examples commonly use lowercase for xml:lang (e.g. "zh-cn").
+  // The value is case-insensitive per BCP-47, but normalizing helps avoid strict parsers.
+  let speak_lang = chosen_locale.to_lowercase();
+
+  let ssml = format!(
+    "<speak xmlns=\"http://www.w3.org/2001/10/synthesis\" xmlns:mstts=\"http://www.w3.org/2001/mstts\" xmlns:emo=\"http://www.w3.org/2009/10/emotionml\" version=\"1.0\" xml:lang=\"{}\"><voice name=\"{}\">{}</voice></speak>",
+    xml_escape_attr(&speak_lang),
+    xml_escape_attr(&chosen_voice),
+    xml_escape_text(text)
+  );
+
+  let url = format!(
+    "https://{region}.tts.speech.microsoft.com/cognitiveservices/v1",
+    region = region_norm
+  );
+
+  let client = reqwest::Client::new();
+  let resp = client
+    .post(url)
+    .header("content-type", "application/ssml+xml")
+    .header("ocp-apim-subscription-key", key)
+    .header("x-microsoft-outputformat", "riff-24khz-16bit-mono-pcm")
+    .header("user-agent", "ttPin")
+    .body(ssml)
+    .send()
+    .await
+    .map_err(|e| format!("TTS synth request failed: {e}"))?;
+
+  let status = resp.status();
+
+  if !status.is_success() {
+    let msg = resp
+      .text()
+      .await
+      .unwrap_or_else(|_| "".to_string());
+    let msg = msg.trim();
+    if msg.is_empty() {
+      return Err(format!("TTS synth failed: {status}."));
+    }
+    return Err(format!("TTS synth failed: {status}. {msg}"));
+  }
+
+  let bytes = resp
+    .bytes()
+    .await
+    .map_err(|e| format!("TTS synth read response failed: {e}"))?;
+
+  let audio_base64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
+
+  Ok(TtsSynthesizeResult {
+    audio_base64,
+    locale: chosen_locale,
+    voice: chosen_voice,
+  })
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
   tauri::Builder::default()
@@ -195,7 +408,7 @@ pub fn run() {
     .plugin(tauri_plugin_global_shortcut::Builder::new().build())
     .plugin(tauri_plugin_store::Builder::new().build())
     .plugin(tauri_plugin_sql::Builder::new().build())
-    .invoke_handler(tauri::generate_handler![translator_languages, translator_translate, set_always_on_top])
+    .invoke_handler(tauri::generate_handler![translator_languages, translator_translate, tts_synthesize, set_always_on_top])
     .setup(|app| {
       // Use the generated Tauri icon for both the window and tray.
       // This makes the icon update immediately in dev, instead of relying on cached defaults.

@@ -7,6 +7,49 @@ import { Settings } from './components/Settings';
 import { VocabularyPanel } from './components/VocabularyPanel';
 import logoUrl from './assets/logo.png';
 
+type TtsSynthesizeResult = {
+  audio_base64: string;
+  locale: string;
+  voice: string;
+};
+
+type TtsWhich = 'source' | 'target';
+
+function normalizeTtsLang(langCode: string): string {
+  const code = (langCode || '').trim();
+  if (!code) return 'en-US';
+  const lc = code.toLowerCase();
+
+  // Common Azure Translator codes -> Speech locale defaults.
+  if (lc === 'zh-hans') return 'zh-CN';
+  if (lc === 'zh-hant') return 'zh-TW';
+  if (lc === 'en') return 'en-US';
+  if (lc === 'ja') return 'ja-JP';
+  if (lc === 'ko') return 'ko-KR';
+  if (lc === 'fr') return 'fr-FR';
+  if (lc === 'de') return 'de-DE';
+  if (lc === 'es') return 'es-ES';
+  if (lc === 'it') return 'it-IT';
+  if (lc === 'ru') return 'ru-RU';
+  if (lc === 'pt') return 'pt-BR';
+  if (lc === 'ar') return 'ar-SA';
+  if (lc === 'hi') return 'hi-IN';
+
+  // If already locale-ish, keep.
+  if (code.includes('-') && code.length >= 4) return code;
+
+  return code;
+}
+
+function base64ToUint8Array(base64: string): Uint8Array {
+  const binary = window.atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return bytes;
+}
+
 async function loadTranslatorConfigFromStore(): Promise<AzureConfig | null> {
   try {
     const store = await Store.load('settings.json');
@@ -46,10 +89,16 @@ function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [showVocabulary, setShowVocabulary] = useState(false);
   const [savingWord, setSavingWord] = useState(false);
+  const [speakingSource, setSpeakingSource] = useState(false);
+  const [speakingTarget, setSpeakingTarget] = useState(false);
+  const [playingWhich, setPlayingWhich] = useState<TtsWhich | null>(null);
   const [isMaximized, setIsMaximized] = useState(false);
   const sourceRef = useRef<HTMLTextAreaElement | null>(null);
   const targetOutputRef = useRef<HTMLDivElement | null>(null);
   const targetTextRef = useRef<HTMLDivElement | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const audioUrlRef = useRef<string | null>(null);
+  const ttsTokenRef = useRef(0);
 
   const setAlwaysOnTop = async (enabled: boolean) => {
     try {
@@ -229,6 +278,157 @@ function App() {
     window.setTimeout(() => setCopied(false), 1200);
   };
 
+  const loadAzureKeyRegion = async (): Promise<{ key: string; region: string } | null> => {
+    // Prefer in-memory config (already loaded from Store), fallback to Store for safety.
+    const cfg = translatorService.getConfig();
+    if (cfg?.key?.trim() && cfg?.region?.trim()) {
+      return { key: cfg.key, region: cfg.region };
+    }
+
+    try {
+      const store = await Store.load('settings.json');
+      const key = (await store.get<string>('azure.key')) || '';
+      const region = (await store.get<string>('azure.region')) || '';
+      if (!key.trim() || !region.trim()) return null;
+      return { key, region };
+    } catch {
+      return null;
+    }
+  };
+
+  const stopAudio = () => {
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.currentTime = 0;
+      audioRef.current = null;
+    }
+    if (audioUrlRef.current) {
+      URL.revokeObjectURL(audioUrlRef.current);
+      audioUrlRef.current = null;
+    }
+  };
+
+  const stopTts = () => {
+    // Mark any in-flight request as obsolete.
+    ttsTokenRef.current += 1;
+    stopAudio();
+    setPlayingWhich(null);
+    setSpeakingSource(false);
+    setSpeakingTarget(false);
+  };
+
+  const playWavBase64 = async (base64: string, which: TtsWhich, token: number) => {
+    stopAudio();
+    const bytes = base64ToUint8Array(base64);
+    const arrayBuffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
+    const blob = new Blob([arrayBuffer], { type: 'audio/wav' });
+    const url = URL.createObjectURL(blob);
+    audioUrlRef.current = url;
+    const audio = new Audio(url);
+    audioRef.current = audio;
+
+    setPlayingWhich(which);
+
+    try {
+      await audio.play();
+    } finally {
+      audio.onended = () => {
+        // Only clear state if this is still the latest request.
+        stopAudio();
+        if (ttsTokenRef.current === token) {
+          setPlayingWhich(null);
+        }
+      };
+    }
+  };
+
+  const speakText = async (text: string, langCode: string, which: TtsWhich) => {
+    const normalized = text.trim();
+    if (!normalized) return;
+
+    // Stop any existing playback and invalidate previous request.
+    stopAudio();
+    const token = (ttsTokenRef.current += 1);
+
+    setErrorMessage('');
+    if (which === 'source') setSpeakingSource(true);
+    else setSpeakingTarget(true);
+
+    try {
+      const creds = await loadAzureKeyRegion();
+      if (!creds) {
+        setErrorMessage('未检测到 Azure 配置，请先在【设置】中填写 Subscription Key 与 Region。');
+        return;
+      }
+
+      let mod: typeof import('@tauri-apps/api/core');
+      try {
+        mod = await import('@tauri-apps/api/core');
+      } catch {
+        setErrorMessage('当前环境不支持 TTS（请使用 Tauri 版运行）。');
+        return;
+      }
+
+      const res = await mod.invoke<TtsSynthesizeResult>('tts_synthesize', {
+        args: {
+          region: creds.region,
+          key: creds.key,
+          lang: normalizeTtsLang(langCode),
+          text: normalized,
+        },
+      } as unknown as Record<string, unknown>);
+
+      // If user clicked stop while synthesizing, ignore this result.
+      if (ttsTokenRef.current !== token) return;
+
+      await playWavBase64(res.audio_base64, which, token);
+    } catch (e) {
+      setErrorMessage(e instanceof Error ? e.message : String(e));
+    } finally {
+      if (which === 'source') setSpeakingSource(false);
+      else setSpeakingTarget(false);
+    }
+  };
+
+  const isTtsActive = (which: TtsWhich) => {
+    if (which === 'source') return speakingSource || playingWhich === 'source';
+    return speakingTarget || playingWhich === 'target';
+  };
+
+  const isTtsLoading = (which: TtsWhich) => {
+    if (which === 'source') return speakingSource;
+    return speakingTarget;
+  };
+
+  const isTtsPlaying = (which: TtsWhich) => playingWhich === which;
+
+  useEffect(() => {
+    // Cleanup audio resources on unmount.
+    return () => stopTts();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const getSelectedOrAllFromTextarea = (el: HTMLTextAreaElement | null): string => {
+    if (!el) return '';
+    const value = el.value || '';
+    const start = el.selectionStart ?? 0;
+    const end = el.selectionEnd ?? 0;
+    if (start !== end) return value.slice(start, end);
+    return value;
+  };
+
+  const getSelectedOrAllFromOutput = (): string => {
+    const all = targetText || '';
+    const container = targetOutputRef.current;
+    const sel = window.getSelection();
+    if (!container || !sel || sel.isCollapsed || sel.rangeCount === 0) return all;
+    const range = sel.getRangeAt(0);
+    const common = range.commonAncestorContainer;
+    if (!container.contains(common)) return all;
+    const s = sel.toString();
+    return s || all;
+  };
+
   const onSaveToVocabulary = async () => {
     const word = sourceText.trim();
     const translation = targetText.trim();
@@ -266,7 +466,7 @@ function App() {
   };
 
   const onSourceKeyDown: React.KeyboardEventHandler<HTMLTextAreaElement> = (e) => {
-    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+    if (e.ctrlKey && e.key === 'Enter') {
       e.preventDefault();
       void onTranslate();
     }
@@ -537,6 +737,40 @@ function App() {
                 >
                   {translating ? t('uiTranslating') : t('translate')}
                 </button>
+
+                <button
+                  className="ttPinIconBtn ttPinIconBtn--small"
+                  type="button"
+                  onClick={() => {
+                    if (isTtsActive('source')) {
+                      stopTts();
+                      return;
+                    }
+                    void speakText(getSelectedOrAllFromTextarea(sourceRef.current), sourceLang, 'source');
+                  }}
+                  aria-label={isTtsActive('source') ? t('tts.stop') : t('tts.speak')}
+                  title={isTtsActive('source') ? t('tts.stop') : t('tts.speak')}
+                  disabled={(!isTtsActive('source') && !sourceText.trim())}
+                >
+                  <span aria-hidden="true">
+                    {isTtsLoading('source') ? (
+                      <svg className="ttPinSpinner" viewBox="0 0 24 24" width="18" height="18" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="2" opacity="0.25" />
+                        <path d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                      </svg>
+                    ) : isTtsPlaying('source') ? (
+                      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <rect x="7" y="7" width="10" height="10" rx="2" stroke="currentColor" strokeWidth="1.5" />
+                      </svg>
+                    ) : (
+                      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M11 5L6 9H3v6h3l5 4V5Z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+                        <path d="M16.5 8.5a5 5 0 0 1 0 7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                        <path d="M19 6a8 8 0 0 1 0 12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                      </svg>
+                    )}
+                  </span>
+                </button>
               </div>
               <div className="ttPinFooterRight">
                 <div className="ttPinHint">{t('uiShortcutHint')}</div>
@@ -586,6 +820,40 @@ function App() {
                 )}
               </div>
               <div className="ttPinFooterRight">
+                <button
+                  className="ttPinIconBtn ttPinIconBtn--small"
+                  type="button"
+                  onClick={() => {
+                    if (isTtsActive('target')) {
+                      stopTts();
+                      return;
+                    }
+                    void speakText(getSelectedOrAllFromOutput(), targetLang, 'target');
+                  }}
+                  aria-label={isTtsActive('target') ? t('tts.stop') : t('tts.speak')}
+                  title={isTtsActive('target') ? t('tts.stop') : t('tts.speak')}
+                  disabled={(!isTtsActive('target') && !targetText.trim())}
+                >
+                  <span aria-hidden="true">
+                    {isTtsLoading('target') ? (
+                      <svg className="ttPinSpinner" viewBox="0 0 24 24" width="18" height="18" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="2" opacity="0.25" />
+                        <path d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                      </svg>
+                    ) : isTtsPlaying('target') ? (
+                      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <rect x="7" y="7" width="10" height="10" rx="2" stroke="currentColor" strokeWidth="1.5" />
+                      </svg>
+                    ) : (
+                      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M11 5L6 9H3v6h3l5 4V5Z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+                        <path d="M16.5 8.5a5 5 0 0 1 0 7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                        <path d="M19 6a8 8 0 0 1 0 12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                      </svg>
+                    )}
+                  </span>
+                </button>
+
                 <button
                   className="ttPinIconBtn ttPinIconBtn--small"
                   type="button"
