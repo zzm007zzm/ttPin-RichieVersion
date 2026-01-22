@@ -24,7 +24,7 @@
   --fs-sub: clamp(11px, 0.6vw + 8px, 12px);
   --fs-select: clamp(12px, 0.9vw + 7px, 13px);
   --fs-textarea: clamp(13px, 1.2vw + 9px, 18px);
-  --fs-output: clamp(14px, 1.4vw + 10px, 20px);
+  --fs-output: clamp(13px, 1.1vw + 9px, 16px);
   --fs-meta: clamp(11px, 0.7vw + 7px, 12px);
 
   --pad-app: clamp(10px, 1.6vw, 14px);
@@ -338,15 +338,26 @@ textarea::placeholder {
 }
 
 .ttPinLangToggle {
-  padding: clamp(8px, 1.2vw, 10px) clamp(10px, 1.2vw, 12px);
-  min-width: clamp(38px, 5vw, 44px);
+  width: clamp(30px, 4.4vw, 34px);
+  height: clamp(30px, 4.4vw, 34px);
+  display: grid;
+  place-items: center;
+  padding: 0;
   border-radius: 12px;
 }
 
+.ttPinLangIcon {
+  display: block;
+}
+
 .ttPinPinToggle {
-  padding: clamp(8px, 1.2vw, 10px) clamp(10px, 1.2vw, 12px);
-  min-width: clamp(38px, 5vw, 44px);
+  width: clamp(30px, 4.4vw, 34px);
+  height: clamp(30px, 4.4vw, 34px);
+  display: grid;
+  place-items: center;
+  padding: 0;
   border-radius: 12px;
+  font-size: 18px;
 }
 
 .ttPinLanguageBar {
@@ -414,6 +425,19 @@ textarea::placeholder {
   font-size: 18px;
 }
 
+.ttPinIconBtn svg {
+  display: block;
+}
+
+.ttPinIconBtn > span,
+.ttPinPinToggle > span {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  height: 1em;
+}
+
 .ttPinIconBtn--small {
   width: clamp(28px, 4vw, 32px);
   height: clamp(28px, 4vw, 32px);
@@ -475,6 +499,9 @@ textarea::placeholder {
   padding: clamp(8px, 1.2vw, 10px) clamp(12px, 1.6vw, 14px);
   font-weight: 650;
   border-radius: 12px;
+  font-size: var(--fs-select);
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .ttPinPrimaryBtn:hover {

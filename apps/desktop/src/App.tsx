@@ -657,8 +657,46 @@ function App() {
             <span aria-hidden="true">{pinned ? '📌' : '📍'}</span>
           </button>
 
-          <button className="ttPinLangToggle" onClick={toggleLanguage} aria-label="Toggle UI language" type="button">
-            {i18n.language === 'zh' ? 'EN' : '中'}
+          <button
+            className="ttPinLangToggle"
+            onClick={toggleLanguage}
+            aria-label="Toggle UI language"
+            title={i18n.language === 'zh' ? 'Switch UI to English' : '切换界面为中文'}
+            type="button"
+          >
+            <svg
+              className="ttPinLangIcon"
+              viewBox="0 0 24 24"
+              width="20"
+              height="20"
+              aria-hidden="true"
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              <rect x="2" y="3" width="20" height="18" rx="6" fill="#6f8fa6" />
+              <rect x="2" y="3" width="20" height="18" rx="6" fill="rgba(255,255,255,0.18)" />
+              <text
+                x="8.2"
+                y="14.1"
+                textAnchor="middle"
+                fontSize="9"
+                fontWeight="700"
+                fill="#fff"
+                fontFamily="system-ui, -apple-system, Segoe UI, Roboto, sans-serif"
+              >
+                中
+              </text>
+              <text
+                x="16.4"
+                y="14.4"
+                textAnchor="middle"
+                fontSize="7.2"
+                fontWeight="800"
+                fill="#fff"
+                fontFamily="system-ui, -apple-system, Segoe UI, Roboto, sans-serif"
+              >
+                EN
+              </text>
+            </svg>
           </button>
         </div>
       </header>

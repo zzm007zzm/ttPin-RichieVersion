@@ -11,14 +11,15 @@
 
 ## 界面预览
 
-![ttPin 主界面](docs/screenshots/main.png?v=0.1.3)
+![ttPin 主界面](docs/screenshots/main.png?v=1.0.0)
 
-![ttPin 设置页](docs/screenshots/settings.png?v=0.1.3)
+![ttPin 设置页](docs/screenshots/settings.png?v=1.0.0)
 
 ## 功能特性
 
 - 🚀 快捷键唤出桌面翻译卡片
 - 🎯 基于 Azure AI Foundry Translator (LLM) 的高质量翻译
+- 🔊 语音合成（TTS）：支持句子/单词发音（选中优先，否则朗读全文）
 - 📚 生词本管理（单词+翻译+例句+本地存储）
 - 🌐 中英文界面切换
 - 🔑 用户自配置 Azure 资源（密钥仅保存在本机，不会进入仓库或 Release）
@@ -28,7 +29,7 @@
 
 - **桌面应用**: Tauri + React + TypeScript
 - **本地存储**: SQLite（生词本）
-- **Azure服务**: Azure AI Foundry Translator (LLM)
+- **Azure服务**: Azure AI Foundry Translator (LLM) + Azure Speech TTS
 
 > **注**: 当前发布版本为 MVP（纯客户端）。你可以直接下载可执行程序使用；也可以基于源码二次开发。
 
