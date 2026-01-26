@@ -25,6 +25,33 @@ const resources = {
       uiPin: 'Pin on top',
       uiUnpin: 'Unpin',
 
+      // Mode tabs
+      'mode.translate': 'Translate',
+      'mode.email': 'Email',
+
+      // Email
+      'email.title': 'Email Writer',
+      'email.inputPlaceholder': 'Enter email topic or key points...',
+      'email.outputPlaceholder': 'Generated email will appear here',
+      'email.generate': 'Generate',
+      'email.generating': 'Generating...',
+      'email.tone': 'Tone',
+      'email.tone.formal': 'Formal',
+      'email.tone.casual': 'Casual',
+      'email.tone.friendly': 'Friendly',
+      'email.hint': 'Ctrl + Enter to generate',
+      'email.notConfigured': 'Azure OpenAI not configured. Please configure in Settings.',
+
+      // Refine
+      'mode.refine': 'Refine',
+      'refine.title': 'Text Refiner',
+      'refine.inputPlaceholder': 'Enter text to refine...',
+      'refine.outputPlaceholder': 'Refined text will appear here',
+      'refine.refine': 'Refine',
+      'refine.refining': 'Refining...',
+      'refine.hint': 'Ctrl + Enter to refine',
+      'refine.notConfigured': 'Azure OpenAI not configured. Please configure in Settings.',
+
       // TTS
       'tts.speak': 'Text to Speech',
       'tts.stop': 'Stop',
@@ -50,6 +77,19 @@ const resources = {
       'settings.azure.languagesEndpointHelp': 'Leave empty to use default Microsoft Translator endpoint',
       'settings.success.saved': 'Settings saved successfully',
       'settings.error.requiredFields': 'Please fill in all required fields',
+
+      // Settings - Azure OpenAI
+      'settings.openai.title': 'Azure OpenAI Configuration',
+      'settings.openai.description': 'Configure your Azure OpenAI credentials for email generation',
+      'settings.openai.endpoint': 'Endpoint',
+      'settings.openai.endpointHelp': 'e.g. https://your-resource.openai.azure.com',
+      'settings.openai.key': 'API Key',
+      'settings.openai.deploymentName': 'Deployment Name',
+      'settings.openai.deploymentNameHelp': 'Your Azure OpenAI deployment name (e.g. gpt-4o, gpt-35-turbo)',
+
+      // Settings tabs
+      'settings.tab.translator': 'Translator',
+      'settings.tab.openai': 'OpenAI',
 
       // Vocabulary
       'vocabulary.title': 'Vocabulary',
@@ -84,6 +124,33 @@ const resources = {
       uiTranslating: '翻译中…',
       uiShortcutHint: 'Ctrl + Enter 翻译',
 
+      // Mode tabs
+      'mode.translate': '翻译',
+      'mode.email': '邮件',
+
+      // Email
+      'email.title': '邮件助手',
+      'email.inputPlaceholder': '输入邮件主题或要点...',
+      'email.outputPlaceholder': '生成的邮件将显示在这里',
+      'email.generate': '生成',
+      'email.generating': '生成中...',
+      'email.tone': '语气',
+      'email.tone.formal': '正式',
+      'email.tone.casual': '随意',
+      'email.tone.friendly': '友好',
+      'email.hint': 'Ctrl + Enter 生成',
+      'email.notConfigured': 'Azure OpenAI 未配置，请先在设置中配置。',
+
+      // Refine
+      'mode.refine': '调优',
+      'refine.title': '文本调优',
+      'refine.inputPlaceholder': '输入需要调优的文本...',
+      'refine.outputPlaceholder': '调优后的文本将显示在这里',
+      'refine.refine': '调优',
+      'refine.refining': '调优中...',
+      'refine.hint': 'Ctrl + Enter 调优',
+      'refine.notConfigured': 'Azure OpenAI 未配置，请先在设置中配置。',
+
       // TTS
       'tts.speak': '朗读',
       'tts.stop': '停止',
@@ -111,6 +178,19 @@ const resources = {
       'settings.azure.languagesEndpointHelp': '留空则使用默认 Microsoft Translator 端点',
       'settings.success.saved': '设置保存成功',
       'settings.error.requiredFields': '请填写所有必填项',
+
+      // Settings - Azure OpenAI
+      'settings.openai.title': 'Azure OpenAI 配置',
+      'settings.openai.description': '配置您的 Azure OpenAI 凭据以生成邮件',
+      'settings.openai.endpoint': '端点',
+      'settings.openai.endpointHelp': '例如 https://your-resource.openai.azure.com',
+      'settings.openai.key': 'API 密钥',
+      'settings.openai.deploymentName': '部署名称',
+      'settings.openai.deploymentNameHelp': '您的 Azure OpenAI 部署名称（如 gpt-4o, gpt-35-turbo）',
+
+      // Settings tabs
+      'settings.tab.translator': '翻译',
+      'settings.tab.openai': 'OpenAI',
 
       // Vocabulary
       'vocabulary.title': '生词本',

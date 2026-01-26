@@ -287,6 +287,77 @@ async fn fetch_tts_voices(region: &str, key: &str) -> Result<Vec<TtsVoice>, Stri
   Ok(voices)
 }
 
+// ==================== Azure OpenAI ====================
+
+#[derive(serde::Deserialize)]
+struct OpenAIChatArgs {
+  endpoint: String,
+  key: String,
+  deployment_name: String,
+  messages: Vec<OpenAIChatMessage>,
+}
+
+#[derive(serde::Deserialize, serde::Serialize)]
+struct OpenAIChatMessage {
+  role: String,
+  content: String,
+}
+
+#[derive(serde::Serialize)]
+struct OpenAIChatResult {
+  content: String,
+}
+
+#[tauri::command]
+async fn openai_chat(args: OpenAIChatArgs) -> Result<OpenAIChatResult, String> {
+  // Normalize endpoint: ensure it ends with the chat completions path
+  let endpoint = args.endpoint.trim().trim_end_matches('/');
+  let url = if endpoint.contains("/openai/deployments/") {
+    format!("{endpoint}?api-version=2024-02-15-preview")
+  } else {
+    format!(
+      "{endpoint}/openai/deployments/{}/chat/completions?api-version=2024-02-15-preview",
+      args.deployment_name
+    )
+  };
+
+  let payload = serde_json::json!({
+    "messages": args.messages,
+  });
+
+  let client = reqwest::Client::new();
+  let resp = client
+    .post(&url)
+    .header("Content-Type", "application/json")
+    .header("api-key", &args.key)
+    .json(&payload)
+    .send()
+    .await
+    .map_err(|e| format!("OpenAI request failed: {e}"))?;
+
+  let status = resp.status();
+  let text = resp.text().await.map_err(|e| format!("Read response failed: {e}"))?;
+
+  if !status.is_success() {
+    return Err(format!("OpenAI request failed: {status}. {text}"));
+  }
+
+  let data: serde_json::Value = serde_json::from_str(&text).map_err(|e| format!("Invalid JSON: {e}"))?;
+  
+  let content = data
+    .get("choices")
+    .and_then(|c| c.get(0))
+    .and_then(|c| c.get("message"))
+    .and_then(|m| m.get("content"))
+    .and_then(|c| c.as_str())
+    .ok_or_else(|| "OpenAI response missing choices[0].message.content".to_string())?
+    .to_string();
+
+  Ok(OpenAIChatResult { content })
+}
+
+// ==================== TTS Voice Selection ====================
+
 fn pick_default_voice<'a>(voices: &'a [TtsVoice], preferred: &str) -> Option<&'a TtsVoice> {
   let (preferred_locale, preferred_lang) = normalize_lang_or_locale(preferred);
   let preferred_locale_lc = preferred_locale.to_lowercase();
@@ -408,7 +479,7 @@ pub fn run() {
     .plugin(tauri_plugin_global_shortcut::Builder::new().build())
     .plugin(tauri_plugin_store::Builder::new().build())
     .plugin(tauri_plugin_sql::Builder::new().build())
-    .invoke_handler(tauri::generate_handler![translator_languages, translator_translate, tts_synthesize, set_always_on_top])
+    .invoke_handler(tauri::generate_handler![translator_languages, translator_translate, tts_synthesize, set_always_on_top, openai_chat])
     .setup(|app| {
       // Use the generated Tauri icon for both the window and tray.
       // This makes the icon update immediately in dev, instead of relying on cached defaults.

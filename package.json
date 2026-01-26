@@ -1,18 +1,19 @@
 {
-  "name": "ttpin",
+  "name": "ttpin-richieversion",
   "private": true,
-  "version": "0.1.0",
-  "description": "ttPin - desktop translation widget with Azure LLM translation",
+  "version": "1.0.0",
+  "description": "ttPin-RichieVersion - desktop translation and email writing widget with Azure LLM",
   "license": "PolyForm-Noncommercial-1.0.0",
   "workspaces": [
-    "apps/*",
-    "packages/*"
+    "apps/desktop"
   ],
   "scripts": {
-    "dev": "npm run -ws dev",
-    "build": "npm run -ws build",
-    "lint": "npm run -ws lint",
-    "typecheck": "npm run -ws typecheck"
+    "dev": "npm -w @ttpin/desktop run dev",
+    "build": "npm -w @ttpin/desktop run build",
+    "tauri:dev": "npm -w @ttpin/desktop run tauri:dev",
+    "tauri:build": "npm -w @ttpin/desktop run tauri:build",
+    "lint": "npm -w @ttpin/desktop run lint",
+    "typecheck": "npm -w @ttpin/desktop run typecheck"
   },
   "engines": {
     "node": ">=20"

@@ -1,11 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Store } from '@tauri-apps/plugin-store';
 import { translatorService, type AzureConfig, type SupportedLanguage } from './services/azureTranslator';
 import { vocabularyService } from './services/vocabularyService';
+import { openAIService, loadOpenAIConfigFromStore } from './services/azureOpenAI';
 import { Settings } from './components/Settings';
 import { VocabularyPanel } from './components/VocabularyPanel';
 import logoUrl from './assets/logo.png';
+
+type AppMode = 'translate' | 'email' | 'refine';
+type EmailTone = 'formal' | 'casual' | 'friendly';
 
 type TtsSynthesizeResult = {
   audio_base64: string;
@@ -52,6 +55,7 @@ function base64ToUint8Array(base64: string): Uint8Array {
 
 async function loadTranslatorConfigFromStore(): Promise<AzureConfig | null> {
   try {
+    const { Store } = await import('@tauri-apps/plugin-store');
     const store = await Store.load('settings.json');
     const endpoint = await store.get<string>('azure.translateEndpoint');
     const key = await store.get<string>('azure.key');
@@ -66,18 +70,40 @@ async function loadTranslatorConfigFromStore(): Promise<AzureConfig | null> {
       deploymentName: deploymentName || 'gpt-4o',
     };
   } catch {
-    return null;
+    // Fallback to localStorage in browser
+    try {
+      const endpoint = localStorage.getItem('ttpin.azure.translateEndpoint');
+      const key = localStorage.getItem('ttpin.azure.key');
+      const region = localStorage.getItem('ttpin.azure.region');
+      const deploymentName = localStorage.getItem('ttpin.azure.deploymentName');
+
+      if (!endpoint || !key || !region) return null;
+      return {
+        translateEndpoint: JSON.parse(endpoint),
+        key: JSON.parse(key),
+        region: JSON.parse(region),
+        deploymentName: deploymentName ? JSON.parse(deploymentName) : 'gpt-4o',
+      };
+    } catch {
+      return null;
+    }
   }
 }
 
 function App() {
   const { t, i18n } = useTranslation();
+  const [appMode, setAppMode] = useState<AppMode>('translate');
   const [sourceText, setSourceText] = useState('');
   const [targetText, setTargetText] = useState('');
   const [sourceLang, setSourceLang] = useState<string>('en');
   const [targetLang, setTargetLang] = useState<string>('zh-Hans');
-  const [languages, setLanguages] = useState<SupportedLanguage[]>([]);
-  const [loadingLanguages, setLoadingLanguages] = useState(false);
+  
+  // Fixed language list: only English and Simplified Chinese
+  const languages: SupportedLanguage[] = [
+    { code: 'en', name: 'English', nativeName: 'English', dir: 'ltr', models: [], displayName: 'English' },
+    { code: 'zh-Hans', name: 'Chinese Simplified', nativeName: '简体中文', dir: 'ltr', models: [], displayName: '简体中文' },
+  ];
+  
   const [translating, setTranslating] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string>('');
   const [copied, setCopied] = useState(false);
@@ -93,9 +119,25 @@ function App() {
   const [speakingTarget, setSpeakingTarget] = useState(false);
   const [playingWhich, setPlayingWhich] = useState<TtsWhich | null>(null);
   const [isMaximized, setIsMaximized] = useState(false);
+  
+  // Email mode states
+  const [emailTopic, setEmailTopic] = useState('');
+  const [emailOutput, setEmailOutput] = useState('');
+  const [emailTone, setEmailTone] = useState<EmailTone>('formal');
+  const [generatingEmail, setGeneratingEmail] = useState(false);
+  
+  // Refine mode states
+  const [refineInput, setRefineInput] = useState('');
+  const [refineOutput, setRefineOutput] = useState('');
+  const [refining, setRefining] = useState(false);
+  
   const sourceRef = useRef<HTMLTextAreaElement | null>(null);
+  const emailInputRef = useRef<HTMLTextAreaElement | null>(null);
+  const refineInputRef = useRef<HTMLTextAreaElement | null>(null);
   const targetOutputRef = useRef<HTMLDivElement | null>(null);
   const targetTextRef = useRef<HTMLDivElement | null>(null);
+  const emailOutputRef = useRef<HTMLDivElement | null>(null);
+  const emailTextRef = useRef<HTMLDivElement | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const audioUrlRef = useRef<string | null>(null);
   const ttsTokenRef = useRef(0);
@@ -154,26 +196,28 @@ function App() {
       if (config) {
         translatorService.setConfig(config);
       }
+      
+      // Load OpenAI config
+      const openaiConfig = await loadOpenAIConfigFromStore();
+      if (openaiConfig) {
+        openAIService.setConfig(openaiConfig);
+      }
     };
     void loadConfig();
   }, []);
 
   const handleConfigSaved = async () => {
-    // 重新加载配置和语言列表
+    // 重新加载配置
     const config = await loadTranslatorConfigFromStore();
     if (config) {
       translatorService.setConfig(config);
       setErrorMessage('');
-      // 重新获取语言列表
-      try {
-        setLoadingLanguages(true);
-        const list = await translatorService.fetchSupportedLanguages({ forceRefresh: true });
-        setLanguages(list);
-      } catch (e) {
-        setErrorMessage(e instanceof Error ? e.message : String(e));
-      } finally {
-        setLoadingLanguages(false);
-      }
+    }
+    
+    // Reload OpenAI config
+    const openaiConfig = await loadOpenAIConfigFromStore();
+    if (openaiConfig) {
+      openAIService.setConfig(openaiConfig);
     }
   };
 
@@ -181,36 +225,6 @@ function App() {
     void setAlwaysOnTop(pinned);
     window.localStorage.setItem('ttPinAlwaysOnTop', String(pinned));
   }, [pinned]);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    const load = async () => {
-      setLoadingLanguages(true);
-      setErrorMessage('');
-      try {
-        const list = await translatorService.fetchSupportedLanguages();
-        if (cancelled) return;
-        setLanguages(list);
-
-        if (list.length > 0) {
-          if (!list.some((l) => l.code === sourceLang)) setSourceLang(list[0].code);
-          if (!list.some((l) => l.code === targetLang)) setTargetLang(list[0].code);
-        }
-      } catch (e) {
-        if (cancelled) return;
-        setErrorMessage(e instanceof Error ? e.message : String(e));
-      } finally {
-        if (!cancelled) setLoadingLanguages(false);
-      }
-    };
-
-    load();
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   const onTranslate = async () => {
     setErrorMessage('');
@@ -250,15 +264,84 @@ function App() {
     setErrorMessage('');
   };
 
-  const onClearSource = () => {
-    setSourceText('');
-    setTargetText('');
+  // Email generation function
+  const onGenerateEmail = async () => {
     setErrorMessage('');
-    setTimeout(() => sourceRef.current?.focus(), 0);
+    setEmailOutput('');
+    const topic = emailTopic.trim();
+    if (!topic) return;
+
+    if (!openAIService.isConfigured()) {
+      setErrorMessage(t('email.notConfigured'));
+      return;
+    }
+
+    setGeneratingEmail(true);
+    try {
+      // Determine language based on target language selection
+      const emailLang = targetLang.toLowerCase().startsWith('zh') ? 'zh' : 'en';
+      const result = await openAIService.generateEmail({
+        topic,
+        language: emailLang,
+        tone: emailTone,
+      });
+      setEmailOutput(result.content);
+    } catch (e) {
+      setErrorMessage(e instanceof Error ? e.message : String(e));
+    } finally {
+      setGeneratingEmail(false);
+    }
+  };
+
+  // Refine text function
+  const onRefineText = async () => {
+    setErrorMessage('');
+    setRefineOutput('');
+    const text = refineInput.trim();
+    if (!text) return;
+
+    if (!openAIService.isConfigured()) {
+      setErrorMessage(t('refine.notConfigured'));
+      return;
+    }
+
+    setRefining(true);
+    try {
+      // Determine language based on target language selection
+      const refineLang = targetLang.toLowerCase().startsWith('zh') ? 'zh' : 'en';
+      const result = await openAIService.refineText({
+        text,
+        language: refineLang,
+      });
+      setRefineOutput(result.content);
+    } catch (e) {
+      setErrorMessage(e instanceof Error ? e.message : String(e));
+    } finally {
+      setRefining(false);
+    }
+  };
+
+  const onClearSource = () => {
+    if (appMode === 'email') {
+      setEmailTopic('');
+      setEmailOutput('');
+      setErrorMessage('');
+      setTimeout(() => emailInputRef.current?.focus(), 0);
+    } else if (appMode === 'refine') {
+      setRefineInput('');
+      setRefineOutput('');
+      setErrorMessage('');
+      setTimeout(() => refineInputRef.current?.focus(), 0);
+    } else {
+      setSourceText('');
+      setTargetText('');
+      setErrorMessage('');
+      setTimeout(() => sourceRef.current?.focus(), 0);
+    }
   };
 
   const onCopyTarget = async () => {
-    const text = targetText.trim();
+    const text = appMode === 'email' ? emailOutput.trim() : appMode === 'refine' ? refineOutput.trim() : targetText.trim();
     if (!text) return;
     try {
       await navigator.clipboard.writeText(text);
@@ -286,6 +369,7 @@ function App() {
     }
 
     try {
+      const { Store } = await import('@tauri-apps/plugin-store');
       const store = await Store.load('settings.json');
       const key = (await store.get<string>('azure.key')) || '';
       const region = (await store.get<string>('azure.region')) || '';
@@ -468,7 +552,13 @@ function App() {
   const onSourceKeyDown: React.KeyboardEventHandler<HTMLTextAreaElement> = (e) => {
     if (e.ctrlKey && e.key === 'Enter') {
       e.preventDefault();
-      void onTranslate();
+      if (appMode === 'email') {
+        void onGenerateEmail();
+      } else if (appMode === 'refine') {
+        void onRefineText();
+      } else {
+        void onTranslate();
+      }
     }
   };
 
@@ -568,7 +658,7 @@ function App() {
     <div className="ttPinApp">
       <div className="ttPinTitleBar" data-tauri-drag-region>
         <div className="ttPinTitleBarLeft" data-tauri-drag-region>
-          <span className="ttPinTitleBarTitle" data-tauri-drag-region>ttPin</span>
+          <span className="ttPinTitleBarTitle" data-tauri-drag-region>ttPin-RichieVersion</span>
         </div>
         <div className="ttPinTitleBarControls">
           <button
@@ -701,56 +791,72 @@ function App() {
         </div>
       </header>
       <div className="ttPinScroll">
-        <section className="ttPinLanguageBar" aria-label="Language selection">
-          <div className="ttPinSelectWrap">
-            <select
-              className="ttPinSelect"
-              value={sourceLang}
-              onChange={(e) => setSourceLang(e.target.value)}
-              disabled={loadingLanguages}
-              aria-label={t('sourceLanguage')}
-            >
-              {languages.length === 0 ? (
-                <option value="">{loadingLanguages ? t('uiLoadingLanguages') : t('uiNoLanguages')}</option>
-              ) : (
-                languages.map((lang) => (
-                  <option key={lang.code} value={lang.code}>
-                    {lang.displayName}
-                  </option>
-                ))
-              )}
-            </select>
-          </div>
-
+        {/* Mode tabs */}
+        <div className="ttPinModeTabs">
           <button
-            className="ttPinSwap"
+            className={`ttPinModeTab ${appMode === 'translate' ? 'ttPinModeTab--active' : ''}`}
+            onClick={() => setAppMode('translate')}
             type="button"
-            onClick={onSwapLanguages}
-            aria-label={t('uiSwapLanguages')}
-            title={t('uiSwapLanguages')}
-            disabled={loadingLanguages}
           >
-            <span aria-hidden="true">⇄</span>
+            {t('mode.translate')}
           </button>
+          <button
+            className={`ttPinModeTab ${appMode === 'email' ? 'ttPinModeTab--active' : ''}`}
+            onClick={() => setAppMode('email')}
+            type="button"
+          >
+            {t('mode.email')}
+          </button>
+          <button
+            className={`ttPinModeTab ${appMode === 'refine' ? 'ttPinModeTab--active' : ''}`}
+            onClick={() => setAppMode('refine')}
+            type="button"
+          >
+            {t('mode.refine')}
+          </button>
+        </div>
 
-          <div className="ttPinSelectWrap">
-            <select
-              className="ttPinSelect"
-              value={targetLang}
-              onChange={(e) => setTargetLang(e.target.value)}
-              disabled={loadingLanguages}
-              aria-label={t('targetLanguage')}
-            >
-              {languages.length === 0 ? (
-                <option value="">{loadingLanguages ? t('uiLoadingLanguages') : t('uiNoLanguages')}</option>
-              ) : (
-                languages.map((lang) => (
-                  <option key={lang.code} value={lang.code}>
-                    {lang.displayName}
-                  </option>
-                ))
-              )}
-            </select>
+        {appMode === 'translate' && (
+          <>
+            <section className="ttPinLanguageBar" aria-label="Language selection">
+              <div className="ttPinSelectWrap">
+                <select
+                  className="ttPinSelect"
+                  value={sourceLang}
+                  onChange={(e) => setSourceLang(e.target.value)}
+                  aria-label={t('sourceLanguage')}
+                >
+                  {languages.map((lang) => (
+                    <option key={lang.code} value={lang.code}>
+                      {lang.displayName}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <button
+                className="ttPinSwap"
+                type="button"
+                onClick={onSwapLanguages}
+                aria-label={t('uiSwapLanguages')}
+                title={t('uiSwapLanguages')}
+              >
+                <span aria-hidden="true">⇄</span>
+              </button>
+
+              <div className="ttPinSelectWrap">
+                <select
+                  className="ttPinSelect"
+                  value={targetLang}
+                  onChange={(e) => setTargetLang(e.target.value)}
+                  aria-label={t('targetLanguage')}
+                >
+                  {languages.map((lang) => (
+                    <option key={lang.code} value={lang.code}>
+                      {lang.displayName}
+                    </option>
+                  ))}
+                </select>
           </div>
         </section>
 
@@ -906,6 +1012,213 @@ function App() {
             </div>
           </section>
         </main>
+          </>
+        )}
+
+        {appMode === 'email' && (
+          <>
+            {/* Email mode - language selection for output language */}
+            <section className="ttPinLanguageBar ttPinLanguageBar--email" aria-label="Email language">
+              <div className="ttPinEmailLangLabel">{t('targetLanguage')}:</div>
+              <div className="ttPinSelectWrap">
+                <select
+                  className="ttPinSelect"
+                  value={targetLang}
+                  onChange={(e) => setTargetLang(e.target.value)}
+                  aria-label={t('targetLanguage')}
+                >
+                  {languages.map((lang) => (
+                    <option key={lang.code} value={lang.code}>
+                      {lang.displayName}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="ttPinToneSelect">
+                <label>{t('email.tone')}:</label>
+                <select
+                  className="ttPinSelect ttPinSelect--small"
+                  value={emailTone}
+                  onChange={(e) => setEmailTone(e.target.value as EmailTone)}
+                >
+                  <option value="formal">{t('email.tone.formal')}</option>
+                  <option value="casual">{t('email.tone.casual')}</option>
+                  <option value="friendly">{t('email.tone.friendly')}</option>
+                </select>
+              </div>
+            </section>
+
+            <main className="ttPinPanels" aria-label="Email panels">
+              <section className="ttPinPanel ttPinPanel--source" aria-label="Email topic">
+                <textarea
+                  ref={emailInputRef}
+                  className="ttPinTextarea"
+                  placeholder={t('email.inputPlaceholder')}
+                  value={emailTopic}
+                  onChange={(e) => setEmailTopic(e.target.value)}
+                  onKeyDown={onSourceKeyDown}
+                />
+
+                <div className="ttPinPanelFooter">
+                  <div className="ttPinFooterLeft">
+                    <button
+                      className="ttPinPrimaryBtn"
+                      type="button"
+                      onClick={() => void onGenerateEmail()}
+                      disabled={generatingEmail || !emailTopic.trim()}
+                    >
+                      {generatingEmail ? t('email.generating') : t('email.generate')}
+                    </button>
+                  </div>
+                  <div className="ttPinFooterRight">
+                    <div className="ttPinHint">{t('email.hint')}</div>
+                    {emailTopic.trim() ? (
+                      <button
+                        className="ttPinIconBtn ttPinIconBtn--small"
+                        type="button"
+                        onClick={onClearSource}
+                        aria-label={t('uiClear')}
+                        title={t('uiClear')}
+                      >
+                        <span aria-hidden="true">×</span>
+                      </button>
+                    ) : (
+                      <div />
+                    )}
+                  </div>
+                </div>
+              </section>
+
+              <section className="ttPinPanel ttPinPanel--target" aria-label="Generated email">
+                <div className="ttPinOutput" ref={emailOutputRef} role="textbox" aria-readonly="true">
+                  {emailOutput ? (
+                    <div
+                      ref={emailTextRef}
+                      className="ttPinOutputText ttPinOutputText--email"
+                    >
+                      {emailOutput}
+                    </div>
+                  ) : (
+                    <div className="ttPinOutputPlaceholder">{t('email.outputPlaceholder')}</div>
+                  )}
+                </div>
+
+                <div className="ttPinPanelFooter">
+                  <div className="ttPinFooterLeft">
+                    {copied && <div className="ttPinToast">{t('uiCopied')}</div>}
+                  </div>
+                  <div className="ttPinFooterRight">
+                    <button
+                      className="ttPinIconBtn ttPinIconBtn--small"
+                      type="button"
+                      onClick={() => void onCopyTarget()}
+                      aria-label={t('uiCopy')}
+                      title={t('uiCopy')}
+                      disabled={!emailOutput.trim()}
+                    >
+                      <span aria-hidden="true">⧉</span>
+                    </button>
+                  </div>
+                </div>
+              </section>
+            </main>
+          </>
+        )}
+
+        {appMode === 'refine' && (
+          <>
+            {/* Refine mode - language selection for text language */}
+            <section className="ttPinLanguageBar ttPinLanguageBar--email" aria-label="Refine language">
+              <div className="ttPinEmailLangLabel">{t('targetLanguage')}:</div>
+              <div className="ttPinSelectWrap">
+                <select
+                  className="ttPinSelect"
+                  value={targetLang}
+                  onChange={(e) => setTargetLang(e.target.value)}
+                  aria-label={t('targetLanguage')}
+                >
+                  {languages.map((lang) => (
+                    <option key={lang.code} value={lang.code}>
+                      {lang.displayName}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </section>
+
+            <main className="ttPinPanels" aria-label="Refine panels">
+              <section className="ttPinPanel ttPinPanel--source" aria-label="Text to refine">
+                <textarea
+                  ref={refineInputRef}
+                  className="ttPinTextarea"
+                  placeholder={t('refine.inputPlaceholder')}
+                  value={refineInput}
+                  onChange={(e) => setRefineInput(e.target.value)}
+                  onKeyDown={onSourceKeyDown}
+                />
+
+                <div className="ttPinPanelFooter">
+                  <div className="ttPinFooterLeft">
+                    <button
+                      className="ttPinPrimaryBtn"
+                      type="button"
+                      onClick={() => void onRefineText()}
+                      disabled={refining || !refineInput.trim()}
+                    >
+                      {refining ? t('refine.refining') : t('refine.refine')}
+                    </button>
+                  </div>
+                  <div className="ttPinFooterRight">
+                    <div className="ttPinHint">{t('refine.hint')}</div>
+                    {refineInput.trim() ? (
+                      <button
+                        className="ttPinIconBtn ttPinIconBtn--small"
+                        type="button"
+                        onClick={onClearSource}
+                        aria-label={t('uiClear')}
+                        title={t('uiClear')}
+                      >
+                        <span aria-hidden="true">×</span>
+                      </button>
+                    ) : (
+                      <div />
+                    )}
+                  </div>
+                </div>
+              </section>
+
+              <section className="ttPinPanel ttPinPanel--target" aria-label="Refined text">
+                <div className="ttPinOutput" role="textbox" aria-readonly="true">
+                  {refineOutput ? (
+                    <div className="ttPinOutputText ttPinOutputText--email">
+                      {refineOutput}
+                    </div>
+                  ) : (
+                    <div className="ttPinOutputPlaceholder">{t('refine.outputPlaceholder')}</div>
+                  )}
+                </div>
+
+                <div className="ttPinPanelFooter">
+                  <div className="ttPinFooterLeft">
+                    {copied && <div className="ttPinToast">{t('uiCopied')}</div>}
+                  </div>
+                  <div className="ttPinFooterRight">
+                    <button
+                      className="ttPinIconBtn ttPinIconBtn--small"
+                      type="button"
+                      onClick={() => void onCopyTarget()}
+                      aria-label={t('uiCopy')}
+                      title={t('uiCopy')}
+                      disabled={!refineOutput.trim()}
+                    >
+                      <span aria-hidden="true">⧉</span>
+                    </button>
+                  </div>
+                </div>
+              </section>
+            </main>
+          </>
+        )}
 
         {errorMessage ? (
           <div className="ttPinError" role="alert">

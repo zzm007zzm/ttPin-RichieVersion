@@ -113,9 +113,12 @@ export class AzureTranslatorService {
     let mod: typeof import('@tauri-apps/api/core');
     try {
       mod = await import('@tauri-apps/api/core');
+      if (!mod.invoke) {
+        throw new Error('Tauri invoke not available');
+      }
     } catch {
       // Not running inside Tauri/WebView.
-      return null;
+      throw new Error('翻译功能需要在 Tauri 桌面应用中运行。请安装 Rust 后运行 `npm -w @ttpin/desktop run tauri:dev`');
     }
 
     // IMPORTANT: If invoke fails (e.g., API returns 400), bubble up the error

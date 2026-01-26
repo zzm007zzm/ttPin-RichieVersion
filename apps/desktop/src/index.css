@@ -874,3 +874,118 @@ textarea::placeholder {
   opacity: 0.8;
 }
 
+/* Mode tabs */
+.ttPinModeTabs {
+  display: flex;
+  gap: 4px;
+  padding: 0 4px;
+  margin-bottom: 8px;
+  background: var(--surface-2);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+}
+
+.ttPinModeTab {
+  flex: 1;
+  padding: 8px 16px;
+  font-size: var(--fs-select);
+  font-weight: 600;
+  border: none;
+  background: transparent;
+  color: var(--text-2);
+  border-radius: calc(var(--radius-sm) - 2px);
+  transition: all 150ms ease;
+  margin: 3px 0;
+}
+
+.ttPinModeTab:hover {
+  background: rgba(111, 143, 166, 0.08);
+  color: var(--text);
+}
+
+.ttPinModeTab--active {
+  background: var(--surface);
+  color: var(--accent);
+  box-shadow: 0 2px 6px rgba(35, 33, 30, 0.08);
+}
+
+.ttPinModeTab--active:hover {
+  background: var(--surface);
+}
+
+/* Email mode specific styles */
+.ttPinLanguageBar--email {
+  justify-content: flex-start;
+  gap: 12px;
+}
+
+.ttPinEmailLangLabel {
+  font-size: var(--fs-select);
+  font-weight: 600;
+  color: var(--text-2);
+  white-space: nowrap;
+}
+
+.ttPinToneSelect {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.ttPinToneSelect label {
+  font-size: var(--fs-select);
+  font-weight: 600;
+  color: var(--text-2);
+  white-space: nowrap;
+}
+
+.ttPinSelect--small {
+  min-width: 80px;
+  padding: 6px 28px 6px 10px;
+  font-size: 12px;
+}
+
+.ttPinOutputText--email {
+  white-space: pre-wrap;
+  line-height: 1.6;
+}
+
+/* Settings tabs */
+.ttPinSettingsTabs {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  margin-bottom: 16px;
+  background: var(--surface-2);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+}
+
+.ttPinSettingsTab {
+  flex: 1;
+  padding: 10px 16px;
+  font-size: 14px;
+  font-weight: 600;
+  border: none;
+  background: transparent;
+  color: var(--text-2);
+  border-radius: calc(var(--radius-sm) - 2px);
+  transition: all 150ms ease;
+}
+
+.ttPinSettingsTab:hover {
+  background: rgba(111, 143, 166, 0.08);
+  color: var(--text);
+}
+
+.ttPinSettingsTab--active {
+  background: var(--surface);
+  color: var(--accent);
+  box-shadow: 0 2px 6px rgba(35, 33, 30, 0.08);
+}
+
+.ttPinSettingsTab--active:hover {
+  background: var(--surface);
+}
+
