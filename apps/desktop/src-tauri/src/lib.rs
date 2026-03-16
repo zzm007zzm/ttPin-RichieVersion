@@ -133,7 +133,7 @@ async fn translator_translate(args: TranslateArgs) -> Result<TranslateResult, St
     let resp = client
       .post(url)
       .header("content-type", "application/json")
-      .header("Authorization", format!("Bearer {bearer_token}"))
+      .header("api-key", bearer_token)
       .header("ocp-apim-subscription-region", region)
       .json(&payload)
       .send()
@@ -432,7 +432,7 @@ async fn openai_chat(args: OpenAIChatArgs) -> Result<OpenAIChatResult, String> {
   let resp = client
     .post(&url)
     .header("Content-Type", "application/json")
-    .header("Authorization", format!("Bearer {bearer_token}"))
+    .header("api-key", &bearer_token)
     .json(&payload)
     .send()
     .await
