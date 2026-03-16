@@ -357,19 +357,20 @@ function App() {
     window.setTimeout(() => setCopied(false), 1200);
   };
 
-  const loadAzureRegion = async (): Promise<{ region: string } | null> => {
+  const loadAzureRegion = async (): Promise<{ region: string; translateEndpoint: string } | null> => {
     // Prefer in-memory config (already loaded from Store), fallback to Store for safety.
     const cfg = translatorService.getConfig();
-    if (cfg?.region?.trim()) {
-      return { region: cfg.region };
+    if (cfg?.region?.trim() && cfg?.translateEndpoint?.trim()) {
+      return { region: cfg.region, translateEndpoint: cfg.translateEndpoint };
     }
 
     try {
       const { Store } = await import('@tauri-apps/plugin-store');
       const store = await Store.load('settings.json');
       const region = (await store.get<string>('azure.region')) || '';
-      if (!region.trim()) return null;
-      return { region };
+      const translateEndpoint = (await store.get<string>('azure.translateEndpoint')) || '';
+      if (!region.trim() || !translateEndpoint.trim()) return null;
+      return { region, translateEndpoint };
     } catch {
       return null;
     }
@@ -451,6 +452,7 @@ function App() {
       const res = await mod.invoke<TtsSynthesizeResult>('tts_synthesize', {
         args: {
           region: creds.region,
+          translate_endpoint: creds.translateEndpoint,
           lang: normalizeTtsLang(langCode),
           text: normalized,
         },

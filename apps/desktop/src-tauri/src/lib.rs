@@ -10,27 +10,9 @@ use std::sync::{Mutex, OnceLock};
 
 use base64::Engine;
 
-#[derive(serde::Deserialize, serde::Serialize)]
-struct TranslatorTarget {
-  language: String,
-  #[serde(rename = "deploymentName")]
-  #[serde(skip_serializing_if = "Option::is_none")]
-  deployment_name: Option<String>,
-}
-
-#[derive(serde::Deserialize, serde::Serialize)]
-struct TranslatorInput {
-  text: String,
-  #[serde(skip_serializing_if = "Option::is_none")]
-  language: Option<String>,
-  targets: Vec<TranslatorTarget>,
-}
-
 #[derive(serde::Deserialize)]
 struct TranslateArgs {
   translate_endpoint: String,
-  region: String,
-  deployment_name: String,
   text: String,
   from: Option<String>,
   to: String,
@@ -98,84 +80,60 @@ async fn translator_languages(args: LanguagesArgs) -> Result<serde_json::Value, 
 
 #[tauri::command]
 async fn translator_translate(args: TranslateArgs) -> Result<TranslateResult, String> {
-  let base = reqwest::Url::parse(&args.translate_endpoint)
-    .map_err(|e| format!("Invalid translate endpoint: {e}"))?;
-  let url = with_api_version(base, "2025-10-01-preview");
+  // Normalize endpoint to .cognitiveservices.azure.com base for AAD auth (v3.0 API)
+  let endpoint = args.translate_endpoint.trim().trim_end_matches('/');
+  let base_endpoint = endpoint
+    .replace(".services.ai.azure.com", ".cognitiveservices.azure.com")
+    .split("/translator")
+    .next()
+    .unwrap_or(endpoint)
+    .to_string();
 
-  let mut input = TranslatorInput {
-    text: args.text.clone(),
-    language: None,
-    targets: vec![TranslatorTarget {
-      language: args.to.clone(),
-      deployment_name: Some(args.deployment_name.clone()),
-    }],
-  };
+  // Build URL: {base}/translator/text/v3.0/translate?to={to}[&from={from}]
+  let mut url_str = format!("{base_endpoint}/translator/text/v3.0/translate?to={}", args.to);
 
-  if let Some(from) = args.from.clone() {
-    let from = from.trim().to_string();
+  if let Some(ref from) = args.from {
+    let from = from.trim();
     if !from.is_empty() && from.to_lowercase() != "auto" {
-      input.language = Some(from);
+      url_str.push_str(&format!("&from={from}"));
     }
   }
-
-  let client = reqwest::Client::new();
 
   let bearer_token = get_aad_token_sync()?;
 
-  async fn do_request(
-    client: &reqwest::Client,
-    url: reqwest::Url,
-    bearer_token: &str,
-    region: &str,
-    input: &TranslatorInput,
-  ) -> Result<(reqwest::StatusCode, String), String> {
-    let payload = serde_json::json!({ "inputs": [input] });
-    let resp = client
-      .post(url)
-      .header("content-type", "application/json")
-      .header("api-key", bearer_token)
-      .header("ocp-apim-subscription-region", region)
-      .json(&payload)
-      .send()
-      .await
-      .map_err(|e| format!("Request failed: {e}"))?;
+  // v3.0 API body: [{"Text": "..."}]
+  let payload = serde_json::json!([{ "Text": args.text }]);
 
-    let status = resp.status();
-    let text = resp.text().await.map_err(|e| format!("Read response failed: {e}"))?;
-    Ok((status, text))
-  }
+  let client = reqwest::Client::new();
+  let resp = client
+    .post(&url_str)
+    .header("content-type", "application/json; charset=utf-8")
+    .header("Authorization", format!("Bearer {bearer_token}"))
+    .json(&payload)
+    .send()
+    .await
+    .map_err(|e| format!("Request failed: {e}"))?;
 
-  let (mut status, mut text) = do_request(&client, url.clone(), &bearer_token, &args.region, &input).await?;
-
-  // Some language pairs may reject an explicit source language; retry once without it.
-  if status == reqwest::StatusCode::BAD_REQUEST && input.language.is_some() {
-    let mut input2 = input;
-    input2.language = None;
-    let retry = do_request(&client, url.clone(), &bearer_token, &args.region, &input2).await;
-    if let Ok((st, tx)) = retry {
-      status = st;
-      text = tx;
-    }
-  }
+  let status = resp.status();
+  let text = resp.text().await.map_err(|e| format!("Read response failed: {e}"))?;
 
   if !status.is_success() {
     return Err(format!("Translate request failed: {status}. {text}"));
   }
 
+  // v3.0 response: [{"detectedLanguage":{"language":"en","score":0.9},"translations":[{"text":"...","to":"zh-Hans"}]}]
   let data: serde_json::Value = serde_json::from_str(&text).map_err(|e| format!("Invalid JSON: {e}"))?;
   let translated_text = data
-    .get("value")
-    .and_then(|v| v.get(0))
+    .get(0)
     .and_then(|v| v.get("translations"))
     .and_then(|v| v.get(0))
     .and_then(|v| v.get("text"))
     .and_then(|v| v.as_str())
-    .ok_or_else(|| "Translate response missing value[0].translations[0].text".to_string())?
+    .ok_or_else(|| "Translate response missing [0].translations[0].text".to_string())?
     .to_string();
 
   let detected_language = data
-    .get("value")
-    .and_then(|v| v.get(0))
+    .get(0)
     .and_then(|v| v.get("detectedLanguage"))
     .and_then(|v| v.get("language"))
     .and_then(|v| v.as_str())
@@ -197,6 +155,7 @@ fn set_always_on_top(window: tauri::WebviewWindow, enabled: bool) -> Result<(), 
 #[derive(serde::Deserialize)]
 struct TtsSynthesizeArgs {
   region: String,
+  translate_endpoint: String,
   /// Preferred language/locale (e.g. "zh-CN", "en-US", "en").
   lang: String,
   text: String,
@@ -227,6 +186,7 @@ struct CachedToken {
 }
 
 static AAD_TOKEN_CACHE: OnceLock<Mutex<Option<CachedToken>>> = OnceLock::new();
+static STS_TOKEN_CACHE: OnceLock<Mutex<Option<CachedToken>>> = OnceLock::new();
 
 /// Obtain an AAD token for Azure Cognitive Services via Azure CLI.
 /// Tokens are cached and automatically refreshed 5 minutes before expiry.
@@ -319,6 +279,68 @@ fn get_aad_token_sync() -> Result<String, String> {
   }
 
   Ok(token)
+}
+
+/// Exchange an AAD token for a short-lived STS token via the resource's issueToken endpoint.
+/// Required for Speech (TTS) service. Cached for 8 minutes (STS tokens last ~10 min).
+async fn get_sts_token(endpoint: &str) -> Result<String, String> {
+  let cache = STS_TOKEN_CACHE.get_or_init(|| Mutex::new(None));
+
+  // Check cache (STS tokens expire in ~10 min, refresh at 8 min)
+  {
+    let guard = cache.lock().map_err(|e| format!("STS cache lock error: {e}"))?;
+    if let Some(cached) = guard.as_ref() {
+      let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|e| format!("Time error: {e}"))?
+        .as_secs();
+      if now < cached.expires_on {
+        return Ok(cached.token.clone());
+      }
+    }
+  }
+
+  let aad_token = get_aad_token_sync()?;
+
+  // Normalize endpoint to .cognitiveservices.azure.com
+  let base = endpoint.trim().trim_end_matches('/')
+    .replace(".services.ai.azure.com", ".cognitiveservices.azure.com")
+    .split("/translator").next().unwrap_or(endpoint).to_string();
+
+  let sts_url = format!("{base}/sts/v1.0/issueToken");
+
+  let client = reqwest::Client::new();
+  let resp = client
+    .post(&sts_url)
+    .header("Authorization", format!("Bearer {aad_token}"))
+    .header("Content-Length", "0")
+    .send()
+    .await
+    .map_err(|e| format!("STS token exchange failed: {e}"))?;
+
+  let status = resp.status();
+  let sts_token = resp.text().await.map_err(|e| format!("STS read failed: {e}"))?;
+
+  if !status.is_success() {
+    return Err(format!("STS issueToken failed: {status}. {sts_token}"));
+  }
+
+  // Cache for 8 minutes
+  let expires_on = std::time::SystemTime::now()
+    .duration_since(std::time::UNIX_EPOCH)
+    .unwrap()
+    .as_secs()
+    + 480;
+
+  {
+    let mut guard = cache.lock().map_err(|e| format!("STS cache lock error: {e}"))?;
+    *guard = Some(CachedToken {
+      token: sts_token.clone(),
+      expires_on,
+    });
+  }
+
+  Ok(sts_token)
 }
 
 fn xml_escape_text(input: &str) -> String {
@@ -432,7 +454,7 @@ async fn openai_chat(args: OpenAIChatArgs) -> Result<OpenAIChatResult, String> {
   let resp = client
     .post(&url)
     .header("Content-Type", "application/json")
-    .header("api-key", &bearer_token)
+    .header("Authorization", format!("Bearer {}", &bearer_token))
     .json(&payload)
     .send()
     .await
@@ -493,7 +515,7 @@ async fn tts_synthesize(args: TtsSynthesizeArgs) -> Result<TtsSynthesizeResult, 
     return Err("Text is empty".to_string());
   }
 
-  let bearer_token = get_aad_token_sync()?;
+  let bearer_token = get_sts_token(&args.translate_endpoint).await?;
   let region_norm = normalize_region(region);
 
   // Get voices from cache or fetch.

@@ -264,8 +264,6 @@ export class AzureTranslatorService {
       {
       args: {
         translate_endpoint: this.config!.translateEndpoint,
-        region: this.config!.region,
-        deployment_name: this.config!.deploymentName,
         text,
         from: from ?? null,
         to,
@@ -280,66 +278,8 @@ export class AzureTranslatorService {
       };
     }
 
-    const url = `${this.config!.translateEndpoint}?api-version=2025-10-01-preview`;
-
-    const input: {
-      text: string;
-      language?: string;
-      targets: Array<{ language: string; deploymentName: string }>;
-    } = {
-      text,
-      targets: [{ language: to, deploymentName: this.config!.deploymentName }],
-    };
-
-    const normalizedFrom = from?.trim();
-    if (normalizedFrom && normalizedFrom !== 'auto') {
-      input.language = normalizedFrom;
-    }
-
-    try {
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          'ocp-apim-subscription-region': this.config!.region,
-        },
-        body: JSON.stringify({ inputs: [input] }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(
-          `翻译失败: ${response.status} ${response.statusText}. ${
-            errorData.error?.message || ''
-          }`
-        );
-      }
-
-      const data = (await response.json()) as TranslateApiResponse;
-
-      const first = data?.value?.[0];
-      const translation = first?.translations?.[0];
-
-      if (!translation?.text) {
-        throw new Error('翻译结果为空');
-      }
-
-      return {
-        translatedText: translation.text,
-        detectedLanguage: first?.detectedLanguage?.language,
-      };
-    } catch (error) {
-      if (error instanceof Error) {
-        // Common in WebView/browser when CORS blocks the request.
-        if (error.message === 'Failed to fetch') {
-          throw new Error(
-            '请求被浏览器拦截（CORS），请使用 Tauri 版运行（npm -w @ttpin/desktop run tauri:dev），或走本地代理/后端转发。'
-          );
-        }
-        throw error;
-      }
-      throw new Error('翻译请求失败，请检查网络连接和配置');
-    }
+    // Fallback: should not reach here since Tauri invoke is required for AAD auth.
+    throw new Error('翻译功能需要在 Tauri 桌面应用中运行。请安装 Rust 后运行 `npm -w @ttpin/desktop run tauri:dev`');
   }
 
   /**
