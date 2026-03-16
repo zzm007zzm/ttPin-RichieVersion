@@ -48,23 +48,6 @@ interface LanguagesApiResponse {
   >;
 }
 
-interface TranslateApiResponse {
-  value: Array<{
-    detectedLanguage?: {
-      language: string;
-      score?: number;
-    };
-    translations: Array<{
-      language: string;
-      text: string;
-      instructionTokens?: number;
-      sourceTokens?: number;
-      responseTokens?: number;
-      targetTokens?: number;
-    }>;
-  }>;
-}
-
 export function buildLanguageDisplayName(name: string, nativeName: string): string {
   const trimmedName = name.trim();
   const trimmedNative = nativeName.trim();
