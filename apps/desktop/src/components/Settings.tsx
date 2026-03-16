@@ -44,13 +44,11 @@ export function Settings({ onClose, onConfigSaved }: SettingsProps) {
   
   // Translator settings
   const [endpoint, setEndpoint] = useState('');
-  const [key, setKey] = useState('');
   const [region, setRegion] = useState('');
   const [deploymentName, setDeploymentName] = useState('gpt-4o');
   
   // OpenAI settings
   const [openaiEndpoint, setOpenaiEndpoint] = useState('');
-  const [openaiKey, setOpenaiKey] = useState('');
   const [openaiDeploymentName, setOpenaiDeploymentName] = useState('');
   
   const [saving, setSaving] = useState(false);
@@ -62,22 +60,18 @@ export function Settings({ onClose, onConfigSaved }: SettingsProps) {
       try {
         // Load translator settings
         const savedEndpoint = await loadFromStore<string>('azure.translateEndpoint');
-        const savedKey = await loadFromStore<string>('azure.key');
         const savedRegion = await loadFromStore<string>('azure.region');
         const savedDeployment = await loadFromStore<string>('azure.deploymentName');
 
         if (savedEndpoint) setEndpoint(savedEndpoint);
-        if (savedKey) setKey(savedKey);
         if (savedRegion) setRegion(savedRegion);
         if (savedDeployment) setDeploymentName(savedDeployment);
         
         // Load OpenAI settings
         const savedOpenaiEndpoint = await loadFromStore<string>('azureOpenAI.endpoint');
-        const savedOpenaiKey = await loadFromStore<string>('azureOpenAI.key');
         const savedOpenaiDeployment = await loadFromStore<string>('azureOpenAI.deploymentName');
         
         if (savedOpenaiEndpoint) setOpenaiEndpoint(savedOpenaiEndpoint);
-        if (savedOpenaiKey) setOpenaiKey(savedOpenaiKey);
         if (savedOpenaiDeployment) setOpenaiDeploymentName(savedOpenaiDeployment);
       } catch (error) {
         console.error('Failed to load settings:', error);
@@ -93,12 +87,12 @@ export function Settings({ onClose, onConfigSaved }: SettingsProps) {
 
     // Validate based on active tab
     if (activeTab === 'translator') {
-      if (!endpoint.trim() || !key.trim() || !region.trim() || !deploymentName.trim()) {
+      if (!endpoint.trim() || !region.trim() || !deploymentName.trim()) {
         setErrorMessage(t('settings.error.requiredFields'));
         return;
       }
     } else if (activeTab === 'openai') {
-      if (!openaiEndpoint.trim() || !openaiKey.trim() || !openaiDeploymentName.trim()) {
+      if (!openaiEndpoint.trim() || !openaiDeploymentName.trim()) {
         setErrorMessage(t('settings.error.requiredFields'));
         return;
       }
@@ -109,12 +103,10 @@ export function Settings({ onClose, onConfigSaved }: SettingsProps) {
     try {
       if (activeTab === 'translator') {
         await saveToStore('azure.translateEndpoint', endpoint.trim());
-        await saveToStore('azure.key', key.trim());
         await saveToStore('azure.region', region.trim());
         await saveToStore('azure.deploymentName', deploymentName.trim());
       } else if (activeTab === 'openai') {
         await saveToStore('azureOpenAI.endpoint', openaiEndpoint.trim());
-        await saveToStore('azureOpenAI.key', openaiKey.trim());
         await saveToStore('azureOpenAI.deploymentName', openaiDeploymentName.trim());
       }
 
@@ -174,18 +166,7 @@ export function Settings({ onClose, onConfigSaved }: SettingsProps) {
             </div>
 
             <div className="ttPinFormGroup">
-              <label htmlFor="key">{t('settings.azure.key')} *</label>
-              <input
-                id="key"
-                type="password"
-                value={key}
-                onChange={(e) => setKey(e.target.value)}
-                placeholder="ocp-apim-subscription-key"
-                className="ttPinInput"
-              />
-            </div>
 
-            <div className="ttPinFormGroup">
               <label htmlFor="region">{t('settings.azure.region')} *</label>
               <input
                 id="region"
@@ -228,18 +209,6 @@ export function Settings({ onClose, onConfigSaved }: SettingsProps) {
                 className="ttPinInput"
               />
               <small className="ttPinHelpText">{t('settings.openai.endpointHelp')}</small>
-            </div>
-
-            <div className="ttPinFormGroup">
-              <label htmlFor="openaiKey">{t('settings.openai.key')} *</label>
-              <input
-                id="openaiKey"
-                type="password"
-                value={openaiKey}
-                onChange={(e) => setOpenaiKey(e.target.value)}
-                placeholder="your-api-key"
-                className="ttPinInput"
-              />
             </div>
 
             <div className="ttPinFormGroup">

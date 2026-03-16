@@ -4,7 +4,6 @@
 
 export interface AzureOpenAIConfig {
   endpoint: string;
-  key: string;
   deploymentName: string;
 }
 
@@ -32,26 +31,22 @@ export async function loadOpenAIConfigFromStore(): Promise<AzureOpenAIConfig | n
     const { Store } = await import('@tauri-apps/plugin-store');
     const store = await Store.load('settings.json');
     const endpoint = await store.get<string>('azureOpenAI.endpoint');
-    const key = await store.get<string>('azureOpenAI.key');
     const deploymentName = await store.get<string>('azureOpenAI.deploymentName');
 
-    if (!endpoint || !key || !deploymentName) return null;
+    if (!endpoint || !deploymentName) return null;
     return {
       endpoint,
-      key,
       deploymentName,
     };
   } catch {
     // Fallback to localStorage in browser
     try {
       const endpoint = localStorage.getItem('ttpin.azureOpenAI.endpoint');
-      const key = localStorage.getItem('ttpin.azureOpenAI.key');
       const deploymentName = localStorage.getItem('ttpin.azureOpenAI.deploymentName');
       
-      if (!endpoint || !key || !deploymentName) return null;
+      if (!endpoint || !deploymentName) return null;
       return {
         endpoint: JSON.parse(endpoint),
-        key: JSON.parse(key),
         deploymentName: JSON.parse(deploymentName),
       };
     } catch {
@@ -75,7 +70,6 @@ export class AzureOpenAIService {
     return (
       this.config !== null &&
       !!this.config.endpoint &&
-      !!this.config.key &&
       !!this.config.deploymentName
     );
   }
@@ -138,7 +132,6 @@ Requirements:
     const result = await mod.invoke<{ content: string }>('openai_chat', {
       args: {
         endpoint: config.endpoint,
-        key: config.key,
         deployment_name: config.deploymentName,
         messages: [
           { role: 'user', content: prompt }
@@ -197,7 +190,6 @@ Requirements:
     const result = await mod.invoke<{ content: string }>('openai_chat', {
       args: {
         endpoint: config.endpoint,
-        key: config.key,
         deployment_name: config.deploymentName,
         messages: [
           { role: 'user', content: prompt }

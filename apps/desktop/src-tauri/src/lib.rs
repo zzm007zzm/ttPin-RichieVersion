@@ -29,7 +29,6 @@ struct TranslatorInput {
 #[derive(serde::Deserialize)]
 struct TranslateArgs {
   translate_endpoint: String,
-  key: String,
   region: String,
   deployment_name: String,
   text: String,
@@ -121,10 +120,12 @@ async fn translator_translate(args: TranslateArgs) -> Result<TranslateResult, St
 
   let client = reqwest::Client::new();
 
+  let bearer_token = get_aad_token_sync()?;
+
   async fn do_request(
     client: &reqwest::Client,
     url: reqwest::Url,
-    key: &str,
+    bearer_token: &str,
     region: &str,
     input: &TranslatorInput,
   ) -> Result<(reqwest::StatusCode, String), String> {
@@ -132,7 +133,7 @@ async fn translator_translate(args: TranslateArgs) -> Result<TranslateResult, St
     let resp = client
       .post(url)
       .header("content-type", "application/json")
-      .header("ocp-apim-subscription-key", key)
+      .header("Authorization", format!("Bearer {bearer_token}"))
       .header("ocp-apim-subscription-region", region)
       .json(&payload)
       .send()
@@ -144,13 +145,13 @@ async fn translator_translate(args: TranslateArgs) -> Result<TranslateResult, St
     Ok((status, text))
   }
 
-  let (mut status, mut text) = do_request(&client, url.clone(), &args.key, &args.region, &input).await?;
+  let (mut status, mut text) = do_request(&client, url.clone(), &bearer_token, &args.region, &input).await?;
 
   // Some language pairs may reject an explicit source language; retry once without it.
   if status == reqwest::StatusCode::BAD_REQUEST && input.language.is_some() {
     let mut input2 = input;
     input2.language = None;
-    let retry = do_request(&client, url.clone(), &args.key, &args.region, &input2).await;
+    let retry = do_request(&client, url.clone(), &bearer_token, &args.region, &input2).await;
     if let Ok((st, tx)) = retry {
       status = st;
       text = tx;
@@ -196,7 +197,6 @@ fn set_always_on_top(window: tauri::WebviewWindow, enabled: bool) -> Result<(), 
 #[derive(serde::Deserialize)]
 struct TtsSynthesizeArgs {
   region: String,
-  key: String,
   /// Preferred language/locale (e.g. "zh-CN", "en-US", "en").
   lang: String,
   text: String,
@@ -218,6 +218,92 @@ struct TtsVoice {
 }
 
 static VOICES_CACHE: OnceLock<Mutex<HashMap<String, Vec<TtsVoice>>>> = OnceLock::new();
+
+// ==================== AAD Token Cache ====================
+
+struct CachedToken {
+  token: String,
+  expires_on: u64,
+}
+
+static AAD_TOKEN_CACHE: OnceLock<Mutex<Option<CachedToken>>> = OnceLock::new();
+
+/// Obtain an AAD token for Azure Cognitive Services via Azure CLI.
+/// Tokens are cached and automatically refreshed 5 minutes before expiry.
+fn get_aad_token_sync() -> Result<String, String> {
+  let cache = AAD_TOKEN_CACHE.get_or_init(|| Mutex::new(None));
+
+  // Check cache
+  {
+    let guard = cache.lock().map_err(|e| format!("Token cache lock error: {e}"))?;
+    if let Some(cached) = guard.as_ref() {
+      let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|e| format!("Time error: {e}"))?
+        .as_secs();
+      if now + 300 < cached.expires_on {
+        return Ok(cached.token.clone());
+      }
+    }
+  }
+
+  // Get new token via Azure CLI
+  let output = std::process::Command::new("az")
+    .args([
+      "account",
+      "get-access-token",
+      "--resource",
+      "https://cognitiveservices.azure.com",
+      "--output",
+      "json",
+    ])
+    .output()
+    .map_err(|e| {
+      format!(
+        "Failed to run 'az' CLI: {e}. Please install Azure CLI and run 'az login'."
+      )
+    })?;
+
+  if !output.status.success() {
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    return Err(format!(
+      "Azure CLI failed: {stderr}. Please run 'az login --username zhimzhan@microsoft.com' first."
+    ));
+  }
+
+  let json: serde_json::Value = serde_json::from_slice(&output.stdout)
+    .map_err(|e| format!("Failed to parse az cli output: {e}"))?;
+
+  let token = json
+    .get("accessToken")
+    .and_then(|v| v.as_str())
+    .ok_or("Missing accessToken in az cli output")?
+    .to_string();
+
+  let expires_on = json
+    .get("expires_on")
+    .and_then(|v| v.as_str())
+    .and_then(|s| s.parse::<u64>().ok())
+    .or_else(|| json.get("expires_on").and_then(|v| v.as_u64()))
+    .unwrap_or_else(|| {
+      std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs()
+        + 3600
+    });
+
+  // Cache the token
+  {
+    let mut guard = cache.lock().map_err(|e| format!("Token cache lock error: {e}"))?;
+    *guard = Some(CachedToken {
+      token: token.clone(),
+      expires_on,
+    });
+  }
+
+  Ok(token)
+}
 
 fn xml_escape_text(input: &str) -> String {
   // Minimal XML escaping for text nodes.
@@ -259,7 +345,7 @@ fn normalize_lang_or_locale(input: &str) -> (String, String) {
   (lang.clone(), lang)
 }
 
-async fn fetch_tts_voices(region: &str, key: &str) -> Result<Vec<TtsVoice>, String> {
+async fn fetch_tts_voices(region: &str, bearer_token: &str) -> Result<Vec<TtsVoice>, String> {
   let region = normalize_region(region);
   let url = format!(
     "https://{region}.tts.speech.microsoft.com/cognitiveservices/voices/list"
@@ -268,7 +354,7 @@ async fn fetch_tts_voices(region: &str, key: &str) -> Result<Vec<TtsVoice>, Stri
   let client = reqwest::Client::new();
   let resp = client
     .get(url)
-    .header("ocp-apim-subscription-key", key)
+    .header("Authorization", format!("Bearer {bearer_token}"))
     .send()
     .await
     .map_err(|e| format!("TTS voices request failed: {e}"))?;
@@ -292,7 +378,6 @@ async fn fetch_tts_voices(region: &str, key: &str) -> Result<Vec<TtsVoice>, Stri
 #[derive(serde::Deserialize)]
 struct OpenAIChatArgs {
   endpoint: String,
-  key: String,
   deployment_name: String,
   messages: Vec<OpenAIChatMessage>,
 }
@@ -325,11 +410,13 @@ async fn openai_chat(args: OpenAIChatArgs) -> Result<OpenAIChatResult, String> {
     "messages": args.messages,
   });
 
+  let bearer_token = get_aad_token_sync()?;
+
   let client = reqwest::Client::new();
   let resp = client
     .post(&url)
     .header("Content-Type", "application/json")
-    .header("api-key", &args.key)
+    .header("Authorization", format!("Bearer {bearer_token}"))
     .json(&payload)
     .send()
     .await
@@ -381,12 +468,8 @@ fn pick_default_voice<'a>(voices: &'a [TtsVoice], preferred: &str) -> Option<&'a
 
 #[tauri::command]
 async fn tts_synthesize(args: TtsSynthesizeArgs) -> Result<TtsSynthesizeResult, String> {
-  let key = args.key.trim();
   let region = args.region.trim();
   let text = args.text.trim();
-  if key.is_empty() {
-    return Err("Missing subscription key".to_string());
-  }
   if region.is_empty() {
     return Err("Missing region".to_string());
   }
@@ -394,6 +477,7 @@ async fn tts_synthesize(args: TtsSynthesizeArgs) -> Result<TtsSynthesizeResult, 
     return Err("Text is empty".to_string());
   }
 
+  let bearer_token = get_aad_token_sync()?;
   let region_norm = normalize_region(region);
 
   // Get voices from cache or fetch.
@@ -406,7 +490,7 @@ async fn tts_synthesize(args: TtsSynthesizeArgs) -> Result<TtsSynthesizeResult, 
   let voices = if let Some(v) = cached {
     v
   } else {
-    let v = fetch_tts_voices(&region_norm, key).await?;
+    let v = fetch_tts_voices(&region_norm, &bearer_token).await?;
     let mut guard = cache.lock().map_err(|_| "Voices cache poisoned".to_string())?;
     guard.insert(region_norm.clone(), v.clone());
     v
@@ -436,7 +520,7 @@ async fn tts_synthesize(args: TtsSynthesizeArgs) -> Result<TtsSynthesizeResult, 
   let resp = client
     .post(url)
     .header("content-type", "application/ssml+xml")
-    .header("ocp-apim-subscription-key", key)
+    .header("Authorization", format!("Bearer {bearer_token}"))
     .header("x-microsoft-outputformat", "riff-24khz-16bit-mono-pcm")
     .header("user-agent", "ttPin")
     .body(ssml)
@@ -475,6 +559,13 @@ async fn tts_synthesize(args: TtsSynthesizeArgs) -> Result<TtsSynthesizeResult, 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
   tauri::Builder::default()
+    .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+      // When a second instance is launched, show and focus the existing window.
+      if let Some(w) = app.get_webview_window("main") {
+        let _ = w.show();
+        let _ = w.set_focus();
+      }
+    }))
     .plugin(tauri_plugin_shell::init())
     .plugin(tauri_plugin_global_shortcut::Builder::new().build())
     .plugin(tauri_plugin_store::Builder::new().build())

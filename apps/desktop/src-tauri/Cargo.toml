@@ -30,3 +30,4 @@ tauri-plugin-sql = { version = "2", features = ["sqlite"] }
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 image = { version = "0.25", default-features = false, features = ["png"] }
 base64 = "0.22"
+tauri-plugin-single-instance = "2"

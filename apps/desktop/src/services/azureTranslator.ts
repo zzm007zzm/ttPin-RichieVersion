@@ -11,7 +11,6 @@
 
 export interface AzureConfig {
   translateEndpoint: string;
-  key: string;
   region: string;
   deploymentName: string;
   languagesEndpoint?: string;
@@ -176,7 +175,6 @@ export class AzureTranslatorService {
     return (
       this.config !== null &&
       !!this.config.translateEndpoint &&
-      !!this.config.key &&
       !!this.config.region &&
       !!this.config.deploymentName
     );
@@ -266,7 +264,6 @@ export class AzureTranslatorService {
       {
       args: {
         translate_endpoint: this.config!.translateEndpoint,
-        key: this.config!.key,
         region: this.config!.region,
         deployment_name: this.config!.deploymentName,
         text,
@@ -304,7 +301,6 @@ export class AzureTranslatorService {
         method: 'POST',
         headers: {
           'content-type': 'application/json',
-          'ocp-apim-subscription-key': this.config!.key,
           'ocp-apim-subscription-region': this.config!.region,
         },
         body: JSON.stringify({ inputs: [input] }),

@@ -58,14 +58,12 @@ async function loadTranslatorConfigFromStore(): Promise<AzureConfig | null> {
     const { Store } = await import('@tauri-apps/plugin-store');
     const store = await Store.load('settings.json');
     const endpoint = await store.get<string>('azure.translateEndpoint');
-    const key = await store.get<string>('azure.key');
     const region = await store.get<string>('azure.region');
     const deploymentName = await store.get<string>('azure.deploymentName');
 
-    if (!endpoint || !key || !region) return null;
+    if (!endpoint || !region) return null;
     return {
       translateEndpoint: endpoint,
-      key,
       region,
       deploymentName: deploymentName || 'gpt-4o',
     };
@@ -73,14 +71,12 @@ async function loadTranslatorConfigFromStore(): Promise<AzureConfig | null> {
     // Fallback to localStorage in browser
     try {
       const endpoint = localStorage.getItem('ttpin.azure.translateEndpoint');
-      const key = localStorage.getItem('ttpin.azure.key');
       const region = localStorage.getItem('ttpin.azure.region');
       const deploymentName = localStorage.getItem('ttpin.azure.deploymentName');
 
-      if (!endpoint || !key || !region) return null;
+      if (!endpoint || !region) return null;
       return {
         translateEndpoint: JSON.parse(endpoint),
-        key: JSON.parse(key),
         region: JSON.parse(region),
         deploymentName: deploymentName ? JSON.parse(deploymentName) : 'gpt-4o',
       };
@@ -361,20 +357,19 @@ function App() {
     window.setTimeout(() => setCopied(false), 1200);
   };
 
-  const loadAzureKeyRegion = async (): Promise<{ key: string; region: string } | null> => {
+  const loadAzureRegion = async (): Promise<{ region: string } | null> => {
     // Prefer in-memory config (already loaded from Store), fallback to Store for safety.
     const cfg = translatorService.getConfig();
-    if (cfg?.key?.trim() && cfg?.region?.trim()) {
-      return { key: cfg.key, region: cfg.region };
+    if (cfg?.region?.trim()) {
+      return { region: cfg.region };
     }
 
     try {
       const { Store } = await import('@tauri-apps/plugin-store');
       const store = await Store.load('settings.json');
-      const key = (await store.get<string>('azure.key')) || '';
       const region = (await store.get<string>('azure.region')) || '';
-      if (!key.trim() || !region.trim()) return null;
-      return { key, region };
+      if (!region.trim()) return null;
+      return { region };
     } catch {
       return null;
     }
@@ -439,9 +434,9 @@ function App() {
     else setSpeakingTarget(true);
 
     try {
-      const creds = await loadAzureKeyRegion();
+      const creds = await loadAzureRegion();
       if (!creds) {
-        setErrorMessage('未检测到 Azure 配置，请先在【设置】中填写 Subscription Key 与 Region。');
+        setErrorMessage('未检测到 Azure 配置，请先在【设置】中填写 Region。');
         return;
       }
 
@@ -456,7 +451,6 @@ function App() {
       const res = await mod.invoke<TtsSynthesizeResult>('tts_synthesize', {
         args: {
           region: creds.region,
-          key: creds.key,
           lang: normalizeTtsLang(langCode),
           text: normalized,
         },
