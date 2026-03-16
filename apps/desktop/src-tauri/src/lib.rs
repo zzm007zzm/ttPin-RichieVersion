@@ -247,22 +247,38 @@ fn get_aad_token_sync() -> Result<String, String> {
     }
   }
 
-  // Get new token via Azure CLI
-  let output = std::process::Command::new("az")
-    .args([
-      "account",
-      "get-access-token",
-      "--resource",
-      "https://cognitiveservices.azure.com",
-      "--output",
-      "json",
-    ])
-    .output()
-    .map_err(|e| {
-      format!(
-        "Failed to run 'az' CLI: {e}. Please install Azure CLI and run 'az login'."
-      )
-    })?;
+  // Get new token via Azure CLI.
+  // On Windows, `az` is actually `az.cmd` so we must run it through `cmd /C`.
+  let output = if cfg!(target_os = "windows") {
+    std::process::Command::new("cmd")
+      .args([
+        "/C",
+        "az",
+        "account",
+        "get-access-token",
+        "--resource",
+        "https://cognitiveservices.azure.com",
+        "--output",
+        "json",
+      ])
+      .output()
+  } else {
+    std::process::Command::new("az")
+      .args([
+        "account",
+        "get-access-token",
+        "--resource",
+        "https://cognitiveservices.azure.com",
+        "--output",
+        "json",
+      ])
+      .output()
+  }
+  .map_err(|e| {
+    format!(
+      "Failed to run 'az' CLI: {e}. Please install Azure CLI and run 'az login'."
+    )
+  })?;
 
   if !output.status.success() {
     let stderr = String::from_utf8_lossy(&output.stderr);
