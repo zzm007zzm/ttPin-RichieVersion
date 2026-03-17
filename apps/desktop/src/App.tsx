@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { translatorService, type AzureConfig, type SupportedLanguage } from './services/azureTranslator';
+import { translatorService, type AzureConfig, type SupportedLanguage, type AuthMode } from './services/azureTranslator';
 import { vocabularyService } from './services/vocabularyService';
 import { openAIService, loadOpenAIConfigFromStore } from './services/azureOpenAI';
 import { Settings } from './components/Settings';
@@ -60,12 +60,24 @@ async function loadTranslatorConfigFromStore(): Promise<AzureConfig | null> {
     const endpoint = await store.get<string>('azure.translateEndpoint');
     const region = await store.get<string>('azure.region');
     const deploymentName = await store.get<string>('azure.deploymentName');
+    const authMode = await store.get<AuthMode>('azure.authMode');
+    const key = await store.get<string>('azure.key');
+    const tenantId = await store.get<string>('azure.tenantId');
+    const clientId = await store.get<string>('azure.clientId');
+    const clientSecret = await store.get<string>('azure.clientSecret');
+    const resourceId = await store.get<string>('azure.resourceId');
 
-    if (!endpoint || !region) return null;
+    if (!endpoint) return null;
     return {
       translateEndpoint: endpoint,
-      region,
+      region: region || '',
       deploymentName: deploymentName || 'gpt-4o',
+      authMode: authMode || 'key',
+      key: key || '',
+      tenantId: tenantId || '',
+      clientId: clientId || '',
+      clientSecret: clientSecret || '',
+      resourceId: resourceId || '',
     };
   } catch {
     // Fallback to localStorage in browser
@@ -74,11 +86,13 @@ async function loadTranslatorConfigFromStore(): Promise<AzureConfig | null> {
       const region = localStorage.getItem('ttpin.azure.region');
       const deploymentName = localStorage.getItem('ttpin.azure.deploymentName');
 
-      if (!endpoint || !region) return null;
+      if (!endpoint) return null;
       return {
         translateEndpoint: JSON.parse(endpoint),
-        region: JSON.parse(region),
+        region: region ? JSON.parse(region) : '',
         deploymentName: deploymentName ? JSON.parse(deploymentName) : 'gpt-4o',
+        authMode: 'key',
+        key: '',
       };
     } catch {
       return null;
@@ -357,11 +371,19 @@ function App() {
     window.setTimeout(() => setCopied(false), 1200);
   };
 
-  const loadAzureRegion = async (): Promise<{ region: string; translateEndpoint: string } | null> => {
+  const loadAzureRegion = async (): Promise<{ region: string; translateEndpoint: string; authMode: string; key: string; resourceId: string } | null> => {
     // Prefer in-memory config (already loaded from Store), fallback to Store for safety.
     const cfg = translatorService.getConfig();
-    if (cfg?.region?.trim() && cfg?.translateEndpoint?.trim()) {
-      return { region: cfg.region, translateEndpoint: cfg.translateEndpoint };
+    if (cfg?.translateEndpoint?.trim()) {
+      const mode = cfg.authMode || 'key';
+      const rustAuthMode = mode === 'entra-az-cli' ? 'az-cli' : (mode === 'entra-client-credentials' ? 'entra' : 'key');
+      return {
+        region: cfg.region || '',
+        translateEndpoint: cfg.translateEndpoint,
+        authMode: rustAuthMode,
+        key: cfg.key || '',
+        resourceId: cfg.resourceId || '',
+      };
     }
 
     try {
@@ -369,8 +391,12 @@ function App() {
       const store = await Store.load('settings.json');
       const region = (await store.get<string>('azure.region')) || '';
       const translateEndpoint = (await store.get<string>('azure.translateEndpoint')) || '';
-      if (!region.trim() || !translateEndpoint.trim()) return null;
-      return { region, translateEndpoint };
+      const authMode = (await store.get<string>('azure.authMode')) || 'key';
+      const key = (await store.get<string>('azure.key')) || '';
+      const resourceId = (await store.get<string>('azure.resourceId')) || '';
+      if (!translateEndpoint.trim()) return null;
+      const rustAuthMode = authMode === 'entra-az-cli' ? 'az-cli' : (authMode === 'entra-client-credentials' ? 'entra' : 'key');
+      return { region, translateEndpoint, authMode: rustAuthMode, key, resourceId };
     } catch {
       return null;
     }
@@ -452,9 +478,12 @@ function App() {
       const res = await mod.invoke<TtsSynthesizeResult>('tts_synthesize', {
         args: {
           region: creds.region,
+          key: creds.authMode === 'key' ? creds.key : null,
           translate_endpoint: creds.translateEndpoint,
           lang: normalizeTtsLang(langCode),
           text: normalized,
+          auth_mode: creds.authMode,
+          resource_id: creds.resourceId || null,
         },
       } as unknown as Record<string, unknown>);
 

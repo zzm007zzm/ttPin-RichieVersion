@@ -9,11 +9,19 @@
  *    GET {languagesEndpoint}?api-version=2025-10-01-preview&scope=translation
  */
 
+export type AuthMode = 'key' | 'entra-az-cli' | 'entra-client-credentials';
+
 export interface AzureConfig {
   translateEndpoint: string;
+  key: string;
   region: string;
   deploymentName: string;
   languagesEndpoint?: string;
+  authMode: AuthMode;
+  tenantId?: string;
+  clientId?: string;
+  clientSecret?: string;
+  resourceId?: string;
 }
 
 export interface TranslationRequest {
@@ -155,12 +163,26 @@ export class AzureTranslatorService {
    * 检查配置是否已设置
    */
   isConfigured(): boolean {
-    return (
-      this.config !== null &&
-      !!this.config.translateEndpoint &&
-      !!this.config.region &&
-      !!this.config.deploymentName
-    );
+    if (!this.config || !this.config.translateEndpoint || !this.config.deploymentName) {
+      return false;
+    }
+
+    const mode = this.config.authMode || 'key';
+
+    if (mode === 'key') {
+      return !!this.config.key && !!this.config.region;
+    }
+
+    if (mode === 'entra-az-cli') {
+      // Azure CLI mode only needs endpoint + region (for TTS) + deploymentName
+      return !!this.config.region;
+    }
+
+    if (mode === 'entra-client-credentials') {
+      return !!this.config.tenantId && !!this.config.clientId && !!this.config.clientSecret;
+    }
+
+    return false;
   }
 
   /**
@@ -240,6 +262,11 @@ export class AzureTranslatorService {
     }
 
     const { text, from, to } = request;
+    const mode = this.config!.authMode || 'key';
+    const isEntra = mode.startsWith('entra');
+
+    const rustAuthMode =
+      mode === 'entra-az-cli' ? 'az-cli' : (mode === 'entra-client-credentials' ? 'entra' : 'key');
 
     // Prefer native-side request (Tauri) to avoid CORS.
     const invoked = await this.tryInvoke<{ translated_text: string; detected_language?: string | null }>(
@@ -247,9 +274,13 @@ export class AzureTranslatorService {
       {
       args: {
         translate_endpoint: this.config!.translateEndpoint,
+        key: isEntra ? null : (this.config!.key || null),
+        region: isEntra ? null : (this.config!.region || null),
+        deployment_name: this.config!.deploymentName,
         text,
         from: from ?? null,
         to,
+        auth_mode: rustAuthMode,
       },
       } as unknown as Record<string, unknown>,
     );
@@ -280,6 +311,34 @@ export class AzureTranslatorService {
       console.error('Azure 连接测试失败:', error);
       return false;
     }
+  }
+
+  // ── Entra ID helpers ────────────────────────────────────────────────────
+
+  async entraAcquireClientCredentials(tenantId: string, clientId: string, clientSecret: string): Promise<void> {
+    const result = await this.tryInvoke<void>('entra_acquire_token_client_credentials', {
+      args: { tenant_id: tenantId, client_id: clientId, client_secret: clientSecret },
+    });
+    if (result === null) {
+      throw new Error('Entra client credentials 仅在 Tauri 桌面端可用');
+    }
+  }
+
+  async azCliCheckLogin(): Promise<boolean> {
+    const result = await this.tryInvoke<boolean>('az_cli_check_login', {});
+    if (result === null) {
+      throw new Error('Azure CLI check 仅在 Tauri 桌面端可用');
+    }
+    return result;
+  }
+
+  async entraTokenStatus(): Promise<boolean> {
+    const result = await this.tryInvoke<boolean>('entra_token_status', {});
+    return result ?? false;
+  }
+
+  async entraClearToken(): Promise<void> {
+    await this.tryInvoke<void>('entra_clear_token', {});
   }
 }
 

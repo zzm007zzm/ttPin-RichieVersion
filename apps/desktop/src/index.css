@@ -641,6 +641,28 @@ textarea::placeholder {
   color: var(--text);
 }
 
+.ttPinRadioGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.ttPinRadioLabel {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.ttPinRadioLabel input[type="radio"] {
+  margin: 0;
+  accent-color: var(--accent);
+}
+
 .ttPinInput {
   width: 100%;
   padding: 10px 12px;
