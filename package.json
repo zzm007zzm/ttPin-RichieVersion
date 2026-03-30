@@ -1,7 +1,7 @@
 {
   "name": "ttpin-richieversion",
   "private": true,
-  "version": "1.0.0",
+  "version": "2.0.1",
   "description": "ttPin-RichieVersion - desktop translation and email writing widget with Azure LLM",
   "license": "PolyForm-Noncommercial-1.0.0",
   "workspaces": [
