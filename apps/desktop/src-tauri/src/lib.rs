@@ -710,6 +710,11 @@ async fn fetch_tts_voices(region: &str, key: Option<&str>, bearer_token: Option<
 struct OpenAIChatArgs {
   endpoint: String,
   deployment_name: String,
+  auth_mode: Option<String>,
+  key: Option<String>,
+  tenant_id: Option<String>,
+  client_id: Option<String>,
+  client_secret: Option<String>,
   messages: Vec<OpenAIChatMessage>,
 }
 
@@ -728,6 +733,7 @@ struct OpenAIChatResult {
 async fn openai_chat(args: OpenAIChatArgs) -> Result<OpenAIChatResult, String> {
   // Normalize endpoint: ensure it ends with the chat completions path
   let endpoint = args.endpoint.trim().trim_end_matches('/');
+  let auth_mode = args.auth_mode.as_deref().unwrap_or("key");
   let url = if endpoint.contains("/openai/deployments/") {
     format!("{endpoint}?api-version=2024-02-15-preview")
   } else {
@@ -741,13 +747,44 @@ async fn openai_chat(args: OpenAIChatArgs) -> Result<OpenAIChatResult, String> {
     "messages": args.messages,
   });
 
-  let bearer_token = get_aad_token_sync()?;
-
   let client = reqwest::Client::new();
-  let resp = client
+  let mut request = client
     .post(&url)
-    .header("Content-Type", "application/json")
-    .header("Authorization", format!("Bearer {}", &bearer_token))
+    .header("Content-Type", "application/json");
+
+  request = match auth_mode {
+    "az-cli" => {
+      let bearer_token = get_aad_token_sync()?;
+      request.header("Authorization", format!("Bearer {}", &bearer_token))
+    }
+    "entra" => {
+      let tenant_id = args
+        .tenant_id
+        .as_deref()
+        .ok_or("Tenant ID is required for Entra OpenAI authentication")?;
+      let client_id = args
+        .client_id
+        .as_deref()
+        .ok_or("Client ID is required for Entra OpenAI authentication")?;
+      let client_secret = args
+        .client_secret
+        .as_deref()
+        .ok_or("Client Secret is required for Entra OpenAI authentication")?;
+      let token_cache = client_credentials_request(tenant_id, client_id, client_secret).await?;
+      request.header("Authorization", format!("Bearer {}", token_cache.access_token))
+    }
+    _ => {
+      let key = args
+        .key
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .ok_or("API key is required for Azure OpenAI key authentication")?;
+      request.header("api-key", key)
+    }
+  };
+
+  let resp = request
     .json(&payload)
     .send()
     .await

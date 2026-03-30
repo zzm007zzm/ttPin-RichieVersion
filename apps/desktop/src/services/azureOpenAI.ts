@@ -2,9 +2,16 @@
  * Azure OpenAI 服务 - 用于邮件生成和文本调优
  */
 
+import type { AuthMode } from './azureTranslator';
+
 export interface AzureOpenAIConfig {
   endpoint: string;
   deploymentName: string;
+  authMode: AuthMode;
+  key: string;
+  tenantId?: string;
+  clientId?: string;
+  clientSecret?: string;
 }
 
 export interface EmailGenerateRequest {
@@ -32,22 +39,42 @@ export async function loadOpenAIConfigFromStore(): Promise<AzureOpenAIConfig | n
     const store = await Store.load('settings.json');
     const endpoint = await store.get<string>('azureOpenAI.endpoint');
     const deploymentName = await store.get<string>('azureOpenAI.deploymentName');
+    const authMode = await store.get<AuthMode>('azureOpenAI.authMode');
+    const key = await store.get<string>('azureOpenAI.key');
+    const tenantId = await store.get<string>('azureOpenAI.tenantId');
+    const clientId = await store.get<string>('azureOpenAI.clientId');
+    const clientSecret = await store.get<string>('azureOpenAI.clientSecret');
 
     if (!endpoint || !deploymentName) return null;
     return {
       endpoint,
       deploymentName,
+      authMode: authMode || 'key',
+      key: key || '',
+      tenantId: tenantId || '',
+      clientId: clientId || '',
+      clientSecret: clientSecret || '',
     };
   } catch {
     // Fallback to localStorage in browser
     try {
       const endpoint = localStorage.getItem('ttpin.azureOpenAI.endpoint');
       const deploymentName = localStorage.getItem('ttpin.azureOpenAI.deploymentName');
+      const authMode = localStorage.getItem('ttpin.azureOpenAI.authMode');
+      const key = localStorage.getItem('ttpin.azureOpenAI.key');
+      const tenantId = localStorage.getItem('ttpin.azureOpenAI.tenantId');
+      const clientId = localStorage.getItem('ttpin.azureOpenAI.clientId');
+      const clientSecret = localStorage.getItem('ttpin.azureOpenAI.clientSecret');
       
       if (!endpoint || !deploymentName) return null;
       return {
         endpoint: JSON.parse(endpoint),
         deploymentName: JSON.parse(deploymentName),
+        authMode: authMode ? JSON.parse(authMode) : 'key',
+        key: key ? JSON.parse(key) : '',
+        tenantId: tenantId ? JSON.parse(tenantId) : '',
+        clientId: clientId ? JSON.parse(clientId) : '',
+        clientSecret: clientSecret ? JSON.parse(clientSecret) : '',
       };
     } catch {
       return null;
@@ -58,8 +85,19 @@ export async function loadOpenAIConfigFromStore(): Promise<AzureOpenAIConfig | n
 export class AzureOpenAIService {
   private config: AzureOpenAIConfig | null = null;
 
+  private normalizeEndpoint(raw: string): string {
+    return raw.trim().replace(/\/$/, '');
+  }
+
   setConfig(config: AzureOpenAIConfig) {
-    this.config = config;
+    this.config = {
+      ...config,
+      endpoint: this.normalizeEndpoint(config.endpoint),
+      key: config.key || '',
+      tenantId: config.tenantId || '',
+      clientId: config.clientId || '',
+      clientSecret: config.clientSecret || '',
+    };
   }
 
   getConfig(): AzureOpenAIConfig | null {
@@ -67,11 +105,65 @@ export class AzureOpenAIService {
   }
 
   isConfigured(): boolean {
-    return (
-      this.config !== null &&
-      !!this.config.endpoint &&
-      !!this.config.deploymentName
-    );
+    if (!this.config || !this.config.endpoint || !this.config.deploymentName) {
+      return false;
+    }
+
+    const mode = this.config.authMode || 'key';
+
+    if (mode === 'key') {
+      return !!this.config.key;
+    }
+
+    if (mode === 'entra-az-cli') {
+      return true;
+    }
+
+    if (mode === 'entra-client-credentials') {
+      return !!this.config.tenantId && !!this.config.clientId && !!this.config.clientSecret;
+    }
+
+    return false;
+  }
+
+  private async invokeChat(prompt: string): Promise<{ content: string }> {
+    if (!this.isConfigured()) {
+      throw new Error('Azure OpenAI 未配置，请先在设置中配置。');
+    }
+
+    const config = this.config!;
+
+    let mod: typeof import('@tauri-apps/api/core');
+    try {
+      mod = await import('@tauri-apps/api/core');
+      if (!mod.invoke) {
+        throw new Error('Tauri invoke not available');
+      }
+    } catch {
+      throw new Error('Azure OpenAI 功能需要在 Tauri 桌面应用中运行。请安装 Rust 后运行 `npm -w @ttpin/desktop run tauri:dev`');
+    }
+
+    const rustAuthMode =
+      config.authMode === 'entra-az-cli'
+        ? 'az-cli'
+        : (config.authMode === 'entra-client-credentials' ? 'entra' : 'key');
+
+    const result = await mod.invoke<{ content: string }>('openai_chat', {
+      args: {
+        endpoint: config.endpoint,
+        deployment_name: config.deploymentName,
+        auth_mode: rustAuthMode,
+        key: config.authMode === 'key' ? config.key : null,
+        tenant_id: config.authMode === 'entra-client-credentials' ? config.tenantId : null,
+        client_id: config.authMode === 'entra-client-credentials' ? config.clientId : null,
+        client_secret: config.authMode === 'entra-client-credentials' ? config.clientSecret : null,
+        messages: [
+          { role: 'user', content: prompt },
+        ],
+      },
+    });
+
+    return { content: result.content };
   }
 
   private buildEmailPrompt(request: EmailGenerateRequest): string {
@@ -111,35 +203,8 @@ Requirements:
   }
 
   async generateEmail(request: EmailGenerateRequest): Promise<EmailGenerateResponse> {
-    if (!this.isConfigured()) {
-      throw new Error('Azure OpenAI 未配置，请先在设置中配置。');
-    }
-
-    const config = this.config!;
     const prompt = this.buildEmailPrompt(request);
-
-    // Try to use Tauri invoke first
-    let mod: typeof import('@tauri-apps/api/core');
-    try {
-      mod = await import('@tauri-apps/api/core');
-      if (!mod.invoke) {
-        throw new Error('Tauri invoke not available');
-      }
-    } catch {
-      throw new Error('邮件生成功能需要在 Tauri 桌面应用中运行。请安装 Rust 后运行 `npm -w @ttpin/desktop run tauri:dev`');
-    }
-
-    const result = await mod.invoke<{ content: string }>('openai_chat', {
-      args: {
-        endpoint: config.endpoint,
-        deployment_name: config.deploymentName,
-        messages: [
-          { role: 'user', content: prompt }
-        ],
-      },
-    });
-
-    return { content: result.content };
+    return this.invokeChat(prompt);
   }
 
   private buildRefinePrompt(request: RefineTextRequest): string {
@@ -169,35 +234,8 @@ Requirements:
   }
 
   async refineText(request: RefineTextRequest): Promise<RefineTextResponse> {
-    if (!this.isConfigured()) {
-      throw new Error('Azure OpenAI 未配置，请先在设置中配置。');
-    }
-
-    const config = this.config!;
     const prompt = this.buildRefinePrompt(request);
-
-    // Try to use Tauri invoke
-    let mod: typeof import('@tauri-apps/api/core');
-    try {
-      mod = await import('@tauri-apps/api/core');
-      if (!mod.invoke) {
-        throw new Error('Tauri invoke not available');
-      }
-    } catch {
-      throw new Error('调优功能需要在 Tauri 桌面应用中运行。请安装 Rust 后运行 `npm -w @ttpin/desktop run tauri:dev`');
-    }
-
-    const result = await mod.invoke<{ content: string }>('openai_chat', {
-      args: {
-        endpoint: config.endpoint,
-        deployment_name: config.deploymentName,
-        messages: [
-          { role: 'user', content: prompt }
-        ],
-      },
-    });
-
-    return { content: result.content };
+    return this.invokeChat(prompt);
   }
 }
 

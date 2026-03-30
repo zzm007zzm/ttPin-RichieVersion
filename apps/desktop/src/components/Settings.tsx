@@ -59,8 +59,15 @@ export function Settings({ onClose, onConfigSaved }: SettingsProps) {
   const [azCliChecking, setAzCliChecking] = useState(false);
   
   // OpenAI settings
+  const [openaiAuthMode, setOpenaiAuthMode] = useState<AuthMode>('key');
   const [openaiEndpoint, setOpenaiEndpoint] = useState('');
+  const [openaiKey, setOpenaiKey] = useState('');
   const [openaiDeploymentName, setOpenaiDeploymentName] = useState('');
+  const [openaiTenantId, setOpenaiTenantId] = useState('');
+  const [openaiClientId, setOpenaiClientId] = useState('');
+  const [openaiClientSecret, setOpenaiClientSecret] = useState('');
+  const [openaiAzCliLoggedIn, setOpenaiAzCliLoggedIn] = useState(false);
+  const [openaiAzCliChecking, setOpenaiAzCliChecking] = useState(false);
   
   const [saving, setSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
@@ -106,11 +113,30 @@ export function Settings({ onClose, onConfigSaved }: SettingsProps) {
         }
         
         // Load OpenAI settings
+        const savedOpenaiAuthMode = await loadFromStore<AuthMode>('azureOpenAI.authMode');
         const savedOpenaiEndpoint = await loadFromStore<string>('azureOpenAI.endpoint');
+        const savedOpenaiKey = await loadFromStore<string>('azureOpenAI.key');
         const savedOpenaiDeployment = await loadFromStore<string>('azureOpenAI.deploymentName');
+        const savedOpenaiTenantId = await loadFromStore<string>('azureOpenAI.tenantId');
+        const savedOpenaiClientId = await loadFromStore<string>('azureOpenAI.clientId');
+        const savedOpenaiClientSecret = await loadFromStore<string>('azureOpenAI.clientSecret');
         
+        if (savedOpenaiAuthMode) setOpenaiAuthMode(savedOpenaiAuthMode);
         if (savedOpenaiEndpoint) setOpenaiEndpoint(savedOpenaiEndpoint);
+        if (savedOpenaiKey) setOpenaiKey(savedOpenaiKey);
         if (savedOpenaiDeployment) setOpenaiDeploymentName(savedOpenaiDeployment);
+        if (savedOpenaiTenantId) setOpenaiTenantId(savedOpenaiTenantId);
+        if (savedOpenaiClientId) setOpenaiClientId(savedOpenaiClientId);
+        if (savedOpenaiClientSecret) setOpenaiClientSecret(savedOpenaiClientSecret);
+
+        if (savedOpenaiAuthMode === 'entra-az-cli') {
+          try {
+            await translatorService.azCliCheckLogin();
+            setOpenaiAzCliLoggedIn(true);
+          } catch {
+            setOpenaiAzCliLoggedIn(false);
+          }
+        }
       } catch (error) {
         console.error('Failed to load settings:', error);
       }
@@ -122,6 +148,9 @@ export function Settings({ onClose, onConfigSaved }: SettingsProps) {
   const isEntra = authMode.startsWith('entra');
   const isAzCli = authMode === 'entra-az-cli';
   const isClientCredentials = authMode === 'entra-client-credentials';
+  const isOpenAIEntra = openaiAuthMode.startsWith('entra');
+  const isOpenAIAzCli = openaiAuthMode === 'entra-az-cli';
+  const isOpenAIClientCredentials = openaiAuthMode === 'entra-client-credentials';
 
   const handleSave = async () => {
     setErrorMessage('');
@@ -155,6 +184,18 @@ export function Settings({ onClose, onConfigSaved }: SettingsProps) {
         setErrorMessage(t('settings.error.requiredFields'));
         return;
       }
+
+      if (openaiAuthMode === 'key') {
+        if (!openaiKey.trim()) {
+          setErrorMessage(t('settings.error.requiredFields'));
+          return;
+        }
+      } else if (isOpenAIClientCredentials) {
+        if (!openaiTenantId.trim() || !openaiClientId.trim() || !openaiClientSecret.trim()) {
+          setErrorMessage(t('settings.error.requiredFields'));
+          return;
+        }
+      }
     }
 
     setSaving(true);
@@ -181,8 +222,13 @@ export function Settings({ onClose, onConfigSaved }: SettingsProps) {
         await saveToStore('azure.clientSecret', clientSecret.trim());
         await saveToStore('azure.resourceId', resourceId.trim());
       } else if (activeTab === 'openai') {
+        await saveToStore('azureOpenAI.authMode', openaiAuthMode);
         await saveToStore('azureOpenAI.endpoint', openaiEndpoint.trim());
+        await saveToStore('azureOpenAI.key', openaiKey.trim());
         await saveToStore('azureOpenAI.deploymentName', openaiDeploymentName.trim());
+        await saveToStore('azureOpenAI.tenantId', openaiTenantId.trim());
+        await saveToStore('azureOpenAI.clientId', openaiClientId.trim());
+        await saveToStore('azureOpenAI.clientSecret', openaiClientSecret.trim());
       }
 
       setSuccessMessage(t('settings.success.saved'));
@@ -221,6 +267,30 @@ export function Settings({ onClose, onConfigSaved }: SettingsProps) {
       await translatorService.entraClearToken();
       setAzCliLoggedIn(false);
       setAzCliChecking(false);
+    }
+  };
+
+  const handleOpenAIAzCliCheck = async () => {
+    setErrorMessage('');
+    setOpenaiAzCliChecking(true);
+    try {
+      await translatorService.azCliCheckLogin();
+      setOpenaiAzCliLoggedIn(true);
+    } catch (error) {
+      setOpenaiAzCliLoggedIn(false);
+      setErrorMessage(error instanceof Error ? error.message : String(error));
+    } finally {
+      setOpenaiAzCliChecking(false);
+    }
+  };
+
+  const handleOpenAIAuthModeChange = (mode: AuthMode) => {
+    setOpenaiAuthMode(mode);
+    setErrorMessage('');
+    setSuccessMessage('');
+    if (mode !== 'entra-az-cli') {
+      setOpenaiAzCliLoggedIn(false);
+      setOpenaiAzCliChecking(false);
     }
   };
 
@@ -462,6 +532,42 @@ export function Settings({ onClose, onConfigSaved }: SettingsProps) {
             <p className="ttPinSettingsDescription">{t('settings.openai.description')}</p>
 
             <div className="ttPinFormGroup">
+              <label>{t('settings.openai.authMode')}</label>
+              <div className="ttPinRadioGroup">
+                <label className="ttPinRadioLabel">
+                  <input
+                    type="radio"
+                    name="openaiAuthMode"
+                    value="key"
+                    checked={openaiAuthMode === 'key'}
+                    onChange={() => handleOpenAIAuthModeChange('key')}
+                  />
+                  {t('settings.openai.authModeKey')}
+                </label>
+                <label className="ttPinRadioLabel">
+                  <input
+                    type="radio"
+                    name="openaiAuthMode"
+                    value="entra-az-cli"
+                    checked={openaiAuthMode === 'entra-az-cli'}
+                    onChange={() => handleOpenAIAuthModeChange('entra-az-cli')}
+                  />
+                  {t('settings.openai.authModeAzCli')}
+                </label>
+                <label className="ttPinRadioLabel">
+                  <input
+                    type="radio"
+                    name="openaiAuthMode"
+                    value="entra-client-credentials"
+                    checked={openaiAuthMode === 'entra-client-credentials'}
+                    onChange={() => handleOpenAIAuthModeChange('entra-client-credentials')}
+                  />
+                  {t('settings.openai.authModeClientCredentials')}
+                </label>
+              </div>
+            </div>
+
+            <div className="ttPinFormGroup">
               <label htmlFor="openaiEndpoint">{t('settings.openai.endpoint')} *</label>
               <input
                 id="openaiEndpoint"
@@ -473,6 +579,79 @@ export function Settings({ onClose, onConfigSaved }: SettingsProps) {
               />
               <small className="ttPinHelpText">{t('settings.openai.endpointHelp')}</small>
             </div>
+
+            {openaiAuthMode === 'key' && (
+              <div className="ttPinFormGroup">
+                <label htmlFor="openaiKey">{t('settings.openai.key')} *</label>
+                <input
+                  id="openaiKey"
+                  type="password"
+                  value={openaiKey}
+                  onChange={(e) => setOpenaiKey(e.target.value)}
+                  placeholder="api-key"
+                  className="ttPinInput"
+                />
+              </div>
+            )}
+
+            {isOpenAIEntra && !isOpenAIAzCli && (
+              <>
+                <div className="ttPinFormGroup">
+                  <label htmlFor="openaiTenantId">{t('settings.openai.tenantId')} *</label>
+                  <input
+                    id="openaiTenantId"
+                    type="text"
+                    value={openaiTenantId}
+                    onChange={(e) => setOpenaiTenantId(e.target.value)}
+                    placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+                    className="ttPinInput"
+                  />
+                </div>
+
+                <div className="ttPinFormGroup">
+                  <label htmlFor="openaiClientId">{t('settings.openai.clientId')} *</label>
+                  <input
+                    id="openaiClientId"
+                    type="text"
+                    value={openaiClientId}
+                    onChange={(e) => setOpenaiClientId(e.target.value)}
+                    placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+                    className="ttPinInput"
+                  />
+                </div>
+
+                {isOpenAIClientCredentials && (
+                  <div className="ttPinFormGroup">
+                    <label htmlFor="openaiClientSecret">{t('settings.openai.clientSecret')} *</label>
+                    <input
+                      id="openaiClientSecret"
+                      type="password"
+                      value={openaiClientSecret}
+                      onChange={(e) => setOpenaiClientSecret(e.target.value)}
+                      placeholder="client secret value"
+                      className="ttPinInput"
+                    />
+                  </div>
+                )}
+              </>
+            )}
+
+            {isOpenAIAzCli && (
+              <div className="ttPinFormGroup">
+                <small className="ttPinHelpText">{t('settings.openai.azCliHelp')}</small>
+                {openaiAzCliLoggedIn ? (
+                  <div className="ttPinSuccessMessage">{t('settings.openai.azCliLoggedIn')}</div>
+                ) : (
+                  <button
+                    className="ttPinButton ttPinButtonSecondary"
+                    onClick={handleOpenAIAzCliCheck}
+                    disabled={openaiAzCliChecking}
+                  >
+                    {openaiAzCliChecking ? t('common.loading') : t('settings.openai.azCliCheck')}
+                  </button>
+                )}
+              </div>
+            )}
 
             <div className="ttPinFormGroup">
               <label htmlFor="openaiDeploymentName">{t('settings.openai.deploymentName')} *</label>
