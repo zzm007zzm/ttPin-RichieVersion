@@ -1,6 +1,6 @@
 # 文档入口
 
-本仓库当前发布的是 **MVP（仅桌面端 / 纯客户端）**。建议按你的身份从下列入口开始阅读。
+本仓库当前发布的是 MVP（仅桌面端 / 纯客户端）。建议按你的身份从下列入口开始阅读。
 
 ## 终端用户（只想安装使用）
 
@@ -9,17 +9,14 @@
 
 ## 开发者（基于源码二次开发）
 
-- [DEVELOPMENT.md](../DEVELOPMENT.md) — 桌面开发说明与已知限制
 - [MVP_ARCHITECTURE.md](../MVP_ARCHITECTURE.md) — 当前 MVP 架构（desktop-only）
-- [ARCHITECTURE.md](../ARCHITECTURE.md) — 完整形态架构蓝图（规划中）
 
-## 维护者（发布与仓库设置）
+## 维护者（发布与版本）
 
-- [docs/maintainers/PUSH_TO_GITHUB.md](maintainers/PUSH_TO_GITHUB.md)
-- [docs/maintainers/GITHUB_SETUP.md](maintainers/GITHUB_SETUP.md)
+- [README.md](../README.md) 中的“维护者发布流程（简版）”
 
-## 历史归档
+## Releases
 
-早期阶段记录（backend/admin-era、实验记录、日报等），统一放在：
+- GitHub Releases: https://github.com/zzm007zzm/ttPin-RichieVersion/releases
 
-- [docs/archive/](archive/)
+说明：如果后续新增 `docs/maintainers` 或 `docs/archive` 目录，再把入口补回此页即可。
